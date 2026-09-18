@@ -20,6 +20,7 @@ from typing import Annotated, Any
 
 import typer
 
+from cua.api.localserver import ensure_server
 from cua.artifact.schema import (
     AppRef,
     ApprovalState,
@@ -84,6 +85,8 @@ async def run_discovery(
     from cua.agent.recorder import DEFAULT_INTERRUPTS, DEFAULT_OUTCOMES, Recorder
     from cua.surface.playwright_surface import PlaywrightSurface
 
+    if not ensure_server(entry):
+        raise typer.Exit(code=2)
     red = _redactor()
     ev = EvidenceWriter(settings.evidence_dir, "discovery", red)
     policy = Policy.load(settings.policy_path)
@@ -214,6 +217,8 @@ async def run_replay(
     from cua.replay.engine import IdempotencyStore, ReplayEngine
     from cua.surface.playwright_surface import PlaywrightSurface
 
+    if not ensure_server(cap.entry_url):
+        raise typer.Exit(code=2)
     red = _redactor()
     ev = EvidenceWriter(settings.evidence_dir, "replay", red)
     policy = Policy.load(settings.policy_path)

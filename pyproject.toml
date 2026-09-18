@@ -57,6 +57,7 @@ ignore = ["RUF012", "N818"]
 "src/cua/surface/playwright_surface.py" = ["E501"]  # embedded JS
 "src/cua/agent/prompts.py" = ["E501"]
 "tests/*" = ["E501"]
+"scripts/*" = ["E501"]
 "src/cua/api/app.py" = ["E501"]  # inline HTML
 
 [tool.mypy]
