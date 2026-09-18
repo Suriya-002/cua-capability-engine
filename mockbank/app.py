@@ -35,7 +35,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 SESSION_COOKIE = "lcu_sid"
 DEMO_USER, DEMO_PASS = "operator", "demo-password"  # synthetic, documented, not a secret
 
-TENANTS = {
+TENANTS: dict[str, dict[str, str | None]] = {
     "a": {
         "name": "Suwannee River CU",
         "color": "#1a3d6d",
@@ -77,7 +77,7 @@ _expire_next: set[str] = set()
 
 
 def _fault(req: Request) -> str:
-    return req.query_params.get("fault") or os.getenv("FAULT", "")
+    return str(req.query_params.get("fault") or os.getenv("FAULT", ""))
 
 
 def _tenant(req: Request) -> dict[str, str | None]:

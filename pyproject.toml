@@ -65,7 +65,7 @@ plugins = ["pydantic.mypy"]
 python_version = "3.11"
 strict = true
 mypy_path = "src"
-packages = ["cua"]
+files = ["src/cua", "mockbank"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

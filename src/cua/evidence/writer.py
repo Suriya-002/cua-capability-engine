@@ -74,11 +74,11 @@ class EvidenceWriter:
         fdir.mkdir(exist_ok=True)
         if dom_html is not None:
             p = fdir / "dom.html"
-            p.write_text(self._redactor.redact(dom_html), encoding="utf-8")
+            p.write_text(self._redactor.redact(dom_html).rstrip("\n") + "\n", encoding="utf-8")
             out.append(p)
         if aria is not None:
             p = fdir / "aria.txt"
-            p.write_text(self._redactor.redact(aria), encoding="utf-8")
+            p.write_text(self._redactor.redact(aria).rstrip("\n") + "\n", encoding="utf-8")
             out.append(p)
         return out
 

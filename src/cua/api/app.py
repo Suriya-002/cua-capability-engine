@@ -121,8 +121,10 @@ async def invoke(cap_id: str, body: InvokeBody) -> JSONResponse:
         cap = cap.model_copy(update={"entry_url": f"{cap.entry_url}{sep}fault={body.fault}"})
     async with _run_lock:
         ev = EvidenceWriter(settings.evidence_dir, "replay", redactor)
+        # An attended run needs a browser a human can see: a real window locally, Xvfb+noVNC in the container.
         surface = PlaywrightSurface(
-            headless=settings.headless, viewport=(settings.viewport_width, settings.viewport_height)
+            headless=settings.headless and not body.attended,
+            viewport=(settings.viewport_width, settings.viewport_height),
         )
         session = SessionController(ev, cap.ref) if body.attended else None
         if session:
@@ -253,6 +255,8 @@ def requests_json() -> list[dict[str, Any]]:
             "id": rid,
             "state": s.state.value,
             "controller": s.controller.value,
+            "capability": s.request.capability_ref if s.request else None,
+            "operator": s.request.acquired_by if s.request else None,
             "reason": s.request.reason if s.request else None,
             "step": s.request.step_n if s.request else None,
             "screenshot": s.request.screenshot_path if s.request else None,
@@ -263,16 +267,52 @@ def requests_json() -> list[dict[str, Any]]:
 
 
 OPERATOR_HTML = """<!doctype html><html><head><title>CUA Operator Console</title>
-<meta http-equiv="refresh" content="5">
-<style>body{font-family:system-ui;margin:20px} table{border-collapse:collapse} td,th{border:1px solid #ccc;padding:6px}
-iframe{width:100%;height:640px;border:1px solid #999}</style></head><body>
+<style>
+body{font-family:system-ui;margin:20px;max-width:1100px} table{border-collapse:collapse;width:100%}
+td,th{border:1px solid #ccc;padding:6px;vertical-align:top} th{background:#f4f4f4;text-align:left}
+input{padding:4px} button{padding:4px 10px} .muted{color:#666} iframe{width:100%;height:640px;border:1px solid #999}
+.paused{color:#b00;font-weight:bold} .human{color:#060;font-weight:bold}
+</style></head><body>
 <h2>Intervention inbox</h2>
-<table><tr><th>Request</th><th>Capability</th><th>Step</th><th>Reason</th><th>State</th><th>Operator</th><th>Actions</th></tr>{{rows}}</table>
-<h2>Live session (same browser the engine is driving)</h2>
-<iframe src="{{novnc}}"></iframe>
-<p>Flow: <b>Take control</b> → fix the screen in the live session → <b>Hand back</b>. The engine re-verifies the step's
-precondition before continuing; your clicks are recorded as <code>human_step</code> evidence.</p>
-</body></html>"""
+<p><label>Operator name <input id="op" placeholder="your name" size="24"></label>
+<span class="muted">(list updates in the background every 3 s; nothing you type is lost)</span></p>
+<table><thead><tr><th>Request</th><th>Capability</th><th>Step</th><th>Reason</th><th>State</th><th>Operator</th><th>Action</th></tr></thead>
+<tbody id="rows"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody></table>
+<h2>Live session</h2>
+<p class="muted">Hosted: the frame below is the same browser the engine is driving (noVNC). Local: use the automation
+Chromium window on your desktop directly.</p>
+<iframe id="vnc" src="{{novnc}}" style="display:none"></iframe>
+<p id="vnc-note" class="muted">No noVNC on this deployment: use the automation Chromium window on your desktop.</p>
+<p>Flow: <b>Take control</b> → do the manual steps in the live browser → <b>Hand back</b>. The engine re-verifies the step,
+records your clicks as <code>human_step</code> evidence, and continues.</p>
+<script>
+const rows = document.getElementById('rows');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function load() {
+  let reqs = [];
+  try { reqs = await (await fetch('/operator/requests')).json(); } catch (e) { return; }
+  if (!reqs.length) { rows.innerHTML = '<tr><td colspan="7" class="muted">No open intervention requests.</td></tr>'; return; }
+  rows.innerHTML = reqs.map(q => {
+    const btn = q.state === 'paused' ? `<button onclick="act('${q.id}','acquire')">Take control</button>`
+              : q.state === 'human' ? `<button onclick="act('${q.id}','release')">Hand back</button>`
+              : '<span class="muted">engine running</span>';
+    return `<tr><td>${esc(q.id)}</td><td>${esc(q.capability)}</td><td>${esc(q.step)}</td><td>${esc(q.reason)}</td>
+            <td class="${esc(q.state)}">${esc(q.state)}</td><td>${esc(q.operator ?? '')}</td><td>${btn}</td></tr>`;
+  }).join('');
+}
+async function act(id, verb) {
+  const operator = document.getElementById('op').value || 'operator';
+  const resolution = verb === 'release' ? (prompt('What did you do in the live session?') || 'resolved by operator') : '';
+  const r = await fetch(`/operator/${id}/${verb}`, { method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({ operator, resolution }) });
+  if (!r.ok) alert(`${verb} failed: ${r.status} ${await r.text()}`);
+  load();
+}
+setInterval(load, 3000); load();
+fetch('/session/', {method: 'HEAD'}).then(r => { if (r.ok) { document.getElementById('vnc').style.display = 'block';
+  document.getElementById('vnc-note').style.display = 'none'; } }).catch(() => {});
+</script></body></html>"""
 
 
 # Mount the mock bank under /bank so one container serves everything.
