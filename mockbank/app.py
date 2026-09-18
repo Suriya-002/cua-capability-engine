@@ -22,6 +22,7 @@ import asyncio
 import os
 import random
 from pathlib import Path
+from typing import Any
 
 from faker import Faker
 from fastapi import FastAPI, Form, Request
@@ -34,7 +35,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 SESSION_COOKIE = "lcu_sid"
 DEMO_USER, DEMO_PASS = "operator", "demo-password"  # synthetic, documented, not a secret
 
-TENANTS: dict[str, dict[str, str | None]] = {
+TENANTS = {
     "a": {
         "name": "Suwannee River CU",
         "color": "#1a3d6d",
@@ -76,12 +77,26 @@ _expire_next: set[str] = set()
 
 
 def _fault(req: Request) -> str:
-    return str(req.query_params.get("fault") or os.getenv("FAULT", ""))
+    return req.query_params.get("fault") or os.getenv("FAULT", "")
 
 
 def _tenant(req: Request) -> dict[str, str | None]:
     t = req.query_params.get("tenant") or req.cookies.get("lcu_tenant") or "a"
     return {**TENANTS.get(t, TENANTS["a"]), "key": t}
+
+
+FIRED_COOKIE = "lcu_fault_fired"
+
+
+def _fault_once(req: Request, name: str) -> bool:
+    """True the first time `name` is requested in this browser session; the caller then marks it fired.
+    Session expiry and interstitial notices happen once in real life, not on every request."""
+    return _fault(req) == name and name not in (req.cookies.get(FIRED_COOKIE) or "").split(",")
+
+
+def _mark_fired(resp: Any, req: Request, name: str) -> None:
+    fired = [x for x in (req.cookies.get(FIRED_COOKIE) or "").split(",") if x]
+    resp.set_cookie(FIRED_COOKIE, ",".join([*fired, name]))
 
 
 def _authed(req: Request) -> bool:
@@ -135,19 +150,23 @@ def nav(request: Request) -> HTMLResponse:
 def search(request: Request) -> HTMLResponse:
     if not _authed(request):
         return RedirectResponse("/bank/login?msg=Session+expired", status_code=303)  # type: ignore[return-value]
-    if _fault(request) == "session_expired":
+    resp = _render(request, "search.html")
+    if _fault_once(request, "session_expired"):
         _expire_next.add(request.cookies.get(SESSION_COOKIE, ""))
-    return _render(request, "search.html")
+        _mark_fired(resp, request, "session_expired")
+    return resp
 
 
 @app.post("/bank/search")
 def do_search(request: Request, member_id: str = Form(...)) -> RedirectResponse:
     if not _authed(request):
         return RedirectResponse("/bank/login?msg=Session+expired", status_code=303)
-    if _fault(request) == "interstitial":
-        return RedirectResponse(
+    if _fault_once(request, "interstitial"):
+        resp = RedirectResponse(
             _keep(request, f"/bank/notice?next=/bank/member/{member_id}"), status_code=303
         )
+        _mark_fired(resp, request, "interstitial")
+        return resp
     return RedirectResponse(_keep(request, f"/bank/member/{member_id}"), status_code=303)
 
 

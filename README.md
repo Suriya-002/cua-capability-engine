@@ -43,11 +43,16 @@ cua replay evidence/capabilities/lookup_member_balance@1.0.0.json --param member
 cua replay evidence/capabilities/lookup_member_balance@1.0.0.json --param member_id=99999 --fault not_found
 #    → {"kind":"business_outcome","outcome_code":"MEMBER_NOT_FOUND",...}
 
-# 5. Recoverable interrupt handled in-engine, and an escalation the human resolves in the live browser
-cua replay ... --fault interstitial                     # recoveries=[notice_interstitial], still success
-cua replay ... --fault permission_denied --attended     # pauses; open http://localhost:7860/operator, take control, hand back
+# 5. Recoverable interrupts handled in-engine (no human, no LLM)
+cua replay ... --fault interstitial        # success, recoveries=[notice_interstitial]
+cua replay ... --fault session_expired     # success, flow restarted once after re-login
 
-# 6. Evidence integrity and leak check
+# 6. Escalation: the member screen returns a 500, the engine pauses and routes an intervention request.
+#    Open http://localhost:7860/operator -> Take control -> do the search yourself in the live browser
+#    -> Hand back. The engine re-verifies, records your clicks as human_step evidence, and completes.
+cua replay ... --fault error_500 --attended
+
+# 7. Evidence integrity and leak check
 cua evidence verify evidence/
 cua evidence leak-check evidence/ --literal demo-password
 ```

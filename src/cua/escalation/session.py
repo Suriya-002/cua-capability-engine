@@ -70,7 +70,10 @@ _LEGAL: dict[SessionState, set[SessionState]] = {
 
 
 class SessionController:
-    def __init__(self, evidence: EvidenceWriter, capability_ref: str) -> None:
+    def __init__(self, evidence: EvidenceWriter, capability_ref: str, on_escalate: Any = None) -> None:
+        self.on_escalate = (
+            on_escalate  # callable(InterventionRequest); routes the request to an operator surface
+        )
         self.state = SessionState.AUTOMATION
         self.controller = Controller.ENGINE
         self._ev = evidence
@@ -112,6 +115,8 @@ class SessionController:
         self.request = req
         self._resume_event.clear()
         self._to(SessionState.PAUSED, Controller.NOBODY, reason=reason, request_id=req.id, step=step_n)
+        if self.on_escalate:
+            self.on_escalate(req)
         return req
 
     def acquire(self, operator: str) -> None:
@@ -136,6 +141,7 @@ class SessionController:
             resolution=resolution,
             request_id=self.request.id,
         )
+        self._resume_event.set()  # wake the engine; it re-verifies, then calls resume_ok/resume_failed
 
     def resume_ok(self) -> None:
         self._to(SessionState.AUTOMATION, Controller.ENGINE, note="precondition re-verified")
@@ -144,6 +150,7 @@ class SessionController:
 
     def resume_failed(self, reason: str) -> None:
         """Precondition still false after the human handed back: re-open, don't guess."""
+        self._resume_event.clear()
         self._to(SessionState.PAUSED, Controller.NOBODY, reason=f"resume check failed: {reason}")
 
     def abort(self, reason: str) -> None:

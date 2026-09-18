@@ -59,6 +59,7 @@ class InvokeBody(BaseModel):
     approved_irreversible: bool = False
     dry_run: bool = False
     attended: bool = Field(False, description="If true, the engine may pause for a human instead of failing")
+    fault: str | None = Field(None, description="Mock-bank fault to inject via the entry URL (demo only)")
 
 
 @app.get("/health")
@@ -115,6 +116,9 @@ async def invoke(cap_id: str, body: InvokeBody) -> JSONResponse:
     cap = store.latest(cap_id)
     if cap is None:
         raise HTTPException(404, "unknown capability")
+    if body.fault:
+        sep = "&" if "?" in cap.entry_url else "?"
+        cap = cap.model_copy(update={"entry_url": f"{cap.entry_url}{sep}fault={body.fault}"})
     async with _run_lock:
         ev = EvidenceWriter(settings.evidence_dir, "replay", redactor)
         surface = PlaywrightSurface(
@@ -132,6 +136,7 @@ async def invoke(cap_id: str, body: InvokeBody) -> JSONResponse:
             idempotency=idem,
             unattended=not body.attended,
             escalation_wait_s=600,
+            secrets=settings.secrets,
         )
         task = asyncio.create_task(
             engine.run(

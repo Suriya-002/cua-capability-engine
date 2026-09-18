@@ -33,6 +33,7 @@ def probe(desc: str, role: str, text: str, frame: str | None = None) -> ProbeRes
         ],
         description=desc,
         text=text,
+        tag="input",  # legacy markup: text fields AND submit buttons are both <input>; role decides
         frame=frame,
     )
 
@@ -64,7 +65,7 @@ def _outcome() -> DiscoveryOutcome:
         act(
             "left_click",
             probe("textbox 'Member ID'", "textbox", "Member ID", "main"),
-            [FRAMES, NAV, SEARCH],
+            [FRAMES, NAV],
             [FRAMES, NAV, SEARCH],
         ),
         act("type", None, [FRAMES, NAV, SEARCH], [FRAMES, NAV, SEARCH], text="10023"),

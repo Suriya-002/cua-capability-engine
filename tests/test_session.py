@@ -55,12 +55,13 @@ async def test_engine_waits_for_resume(evidence: EvidenceWriter) -> None:
     async def operator() -> None:
         await asyncio.sleep(0.05)
         s.acquire("op")
-        s.release("ok")
-        s.resume_ok()
+        s.release("ok")  # wakes the engine; the engine then re-verifies and confirms
 
     task = asyncio.create_task(operator())
     assert await s.wait_for_resume(1.0)
     await task
+    assert s.state == SessionState.RESUMING
+    s.resume_ok()
     assert s.state == SessionState.AUTOMATION
 
 

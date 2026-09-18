@@ -40,6 +40,11 @@ from cua.policy.redaction import Redactor
 from cua.replay.results import DriftProposal, FailureDetail, RecoveryEvent, ReplayResult, ResultKind
 from cua.surface.base import Action, Surface
 
+# Control-flow signals a step can return instead of a terminal result.
+RERUN = "rerun"  # a human or a recovery changed state; run this step again
+RESTART = "restart"  # session was re-established; run the flow from step 1 (once)
+StepSignal = ReplayResult | str | None
+
 PARAM_REF = re.compile(r"\$\{inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\}")
 SECRET_REF = re.compile(r"\$\{secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
@@ -82,6 +87,7 @@ class ReplayEngine:
         self.relogin = relogin
         self.secrets = secrets or {}
         self.redactor.register(*self.secrets.values())
+        self._entry_url = ""
 
     # ------------------------------------------------------------------------------ public
     async def run(
@@ -95,6 +101,7 @@ class ReplayEngine:
         dry_run: bool = False,
     ) -> ReplayResult:
         t0 = time.monotonic()
+        self._t0 = t0  # single clock for the whole run, whatever path finishes it
         cap = cap.apply_tenant(tenant)
         res = ReplayResult(kind=ResultKind.FAILURE, capability_ref=cap.ref, run_id=self.ev.run_id)
         self._validate_inputs(cap, inputs)
@@ -154,6 +161,7 @@ class ReplayEngine:
                 t0,
             )
 
+        self._entry_url = cap.entry_url
         await self.s.start(cap.entry_url)
         fp = await self.s.fingerprint()
         if fp != cap.app.version_fingerprint:
@@ -169,11 +177,44 @@ class ReplayEngine:
             )
 
         try:
-            for step in cap.steps:
-                outcome = await self._run_step(cap, step, inputs, res, approved_irreversible, dry_run)
-                if outcome is not None:
-                    return self._finish(outcome, t0)
+            i, restarts, reruns = 0, 0, 0
+            while i < len(cap.steps):
+                step = cap.steps[i]
+                sig = await self._run_step(cap, step, inputs, res, approved_irreversible, dry_run)
+                if isinstance(sig, ReplayResult):
+                    return self._finish(sig, t0)
+                if sig == RESTART:
+                    restarts += 1
+                    if restarts > 1:
+                        return await self._fail_with_evidence(
+                            res,
+                            step.n,
+                            step.action.value,
+                            "session to stay valid",
+                            "expired twice",
+                            "app_error",
+                            t0,
+                        )
+                    self.ev.event(
+                        "restart", step=step.n, reason="session re-established; running flow from step 1"
+                    )
+                    i = 0
+                    continue
+                if sig == RERUN:
+                    reruns += 1
+                    if reruns > 3:
+                        return await self._fail_with_evidence(
+                            res,
+                            step.n,
+                            step.action.value,
+                            "step to succeed after recovery",
+                            "3 reruns",
+                            "app_error",
+                            t0,
+                        )
+                    continue
                 res.steps_completed = step.n
+                i += 1
             # success checkpoint
             ok, observed = await self._check(cap.success)
             if not ok:
@@ -211,7 +252,7 @@ class ReplayEngine:
         res: ReplayResult,
         approved: bool,
         dry_run: bool,
-    ) -> ReplayResult | None:
+    ) -> StepSignal:
         # 0) control
         if (
             self.session
@@ -235,6 +276,8 @@ class ReplayEngine:
                 recovered = await self._handle_interrupt(intr, step, res)
                 if not recovered:
                     return await self._escalate_or_fail(res, step, f"unrecoverable interrupt '{intr.id}'")
+                if intr.handler == InterruptHandler.RELOGIN:
+                    return RESTART
         # 2) business outcomes
         for oc in cap.outcomes:
             hit = self._matches(oc.detect, snap)
@@ -347,23 +390,32 @@ class ReplayEngine:
             res.outputs[oname] = ar.extracted
         # 7) postcondition
         if step.postcondition:
-            ok, observed = await self._check(step.postcondition)
+            aborts = [o.detect for o in cap.outcomes] + [x.detect for x in cap.interrupts]
+            ok, observed = await self._check(step.postcondition, abort_on=aborts)
             if not ok:
+                snap = await self._snapshot()
                 # a business outcome may have appeared instead of the expected state
                 for oc in cap.outcomes:
-                    hit, _ = await self._check(oc.detect, quick=True)
-                    if hit:
+                    if self._matches(oc.detect, snap):
                         res.kind, res.outcome_code = ResultKind.BUSINESS_OUTCOME, oc.code
                         self.ev.event("business_outcome", step=step.n, code=oc.code)
                         return res
-                return await self._fail_with_evidence(
-                    res,
-                    step.n,
-                    step.action.value,
-                    self._describe(step.postcondition),
-                    observed,
-                    "checkpoint_failed",
-                    time.monotonic(),
+                # or a recoverable condition interrupted the transition: handle it, then re-verify
+                for intr in cap.interrupts:
+                    if self._matches(intr.detect, snap):
+                        if not await self._handle_interrupt(intr, step, res):
+                            return await self._escalate_or_fail(
+                                res, step, f"unrecoverable interrupt '{intr.id}'"
+                            )
+                        if intr.handler == InterruptHandler.RELOGIN:
+                            return RESTART
+                        ok, observed = await self._check(step.postcondition)
+                        if ok:
+                            return None
+                        return RERUN
+                expected = self._describe(step.postcondition)
+                return await self._escalate_or_fail(
+                    res, step, f"postcondition not met: expected {expected}; observed {observed[:200]}"
                 )
         return None
 
@@ -377,8 +429,11 @@ class ReplayEngine:
                     await self.s.act(Action(name="left_click", handle=r.handle))
             elif intr.handler == InterruptHandler.RETRY:
                 await asyncio.sleep(intr.wait_ms / 1000)
-            elif intr.handler == InterruptHandler.RELOGIN and self.relogin:
-                await self.relogin(self.s)
+            elif intr.handler == InterruptHandler.RELOGIN:
+                if self.relogin:
+                    await self.relogin(self.s)
+                else:
+                    await self.s.act(Action(name="navigate", url=self._entry_url))
             elif intr.handler == InterruptHandler.ESCALATE:
                 return False
             hit, _ = await self._check(intr.detect, quick=True)
@@ -396,7 +451,7 @@ class ReplayEngine:
 
     async def _escalate_or_fail(
         self, res: ReplayResult, step: Step, reason: str, *, category: str = "checkpoint_failed"
-    ) -> ReplayResult | None:
+    ) -> StepSignal:
         if self.session is None:
             return await self._fail_with_evidence(
                 res,
@@ -433,7 +488,7 @@ class ReplayEngine:
                 evidence=[str(shot)],
             )
             return res
-        # human handed back: re-verify this step's precondition (or that the interrupt cleared)
+        # human handed back: if they completed the step (postcondition holds) continue; else rerun it.
         if step.precondition:
             ok, observed = await self._check(step.precondition)
             if not ok:
@@ -442,8 +497,13 @@ class ReplayEngine:
                     res, step, f"after handoff, precondition still false: {observed}"
                 )
         self.session.resume_ok()
-        self.ev.event("resumed", step=step.n)
-        return None  # caller re-runs the step
+        self.ev.event("resumed", step=step.n, human_steps=len(req.human_steps))
+        if step.postcondition:
+            ok, _ = await self._check(step.postcondition, quick=True)
+            if ok:
+                self.ev.event("step_completed_by_human", step=step.n)
+                return None
+        return RERUN
 
     async def _snapshot(self) -> tuple[list[str], str]:
         return await self.s.all_urls(), await self.s.read_text()
@@ -460,12 +520,16 @@ class ReplayEngine:
             return False
         return cp.locator is None
 
-    async def _check(self, cp: Checkpoint, *, quick: bool = False) -> tuple[bool, str]:
+    async def _check(
+        self, cp: Checkpoint, *, quick: bool = False, abort_on: list[Checkpoint] | None = None
+    ) -> tuple[bool, str]:
         deadline = time.monotonic() + (0.3 if quick else cp.timeout_ms / 1000)
         observed = ""
         while True:
             urls = await self.s.all_urls()
             text = await self.s.read_text()
+            if abort_on and any(self._matches(a, (urls, text)) for a in abort_on):
+                return False, "an outcome or interrupt condition is visible"
             ok = True
             if cp.url_pattern and not any(re.search(cp.url_pattern, u) for u in urls):
                 ok, observed = False, f"urls={urls}"
@@ -568,7 +632,7 @@ class ReplayEngine:
             step_n=step_n, action=action, expected=expected, observed=observed, category=category
         )
         self.ev.event("failure", step=step_n, category=category, expected=expected, observed=observed)
-        return res
+        return self._finish(res, t0)
 
     async def _fail_with_evidence(
         self,
@@ -590,10 +654,14 @@ class ReplayEngine:
         r = self._fail(res, step_n, action, expected, observed, category, t0)
         assert r.failure
         r.failure.evidence = paths
+        self.ev.summary(result=json.loads(r.model_dump_json()))  # refresh with evidence paths
         return r
 
     def _finish(self, res: ReplayResult, t0: float) -> ReplayResult:
-        res.duration_ms = int((time.monotonic() - t0) * 1000)
+        if getattr(res, "_finished", False):
+            return res
+        object.__setattr__(res, "_finished", True)
+        res.duration_ms = int((time.monotonic() - getattr(self, "_t0", t0)) * 1000)
         self.ev.event(
             "replay_end",
             kind=res.kind.value,

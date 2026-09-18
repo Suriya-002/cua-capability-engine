@@ -33,6 +33,7 @@ from cua.artifact.schema import (
 )
 from cua.artifact.store import ArtifactStore
 from cua.config import settings
+from cua.escalation.session import SessionController
 from cua.evidence.writer import EvidenceWriter, verify_chain
 from cua.logging import configure, get_logger, install_redactor
 from cua.policy.engine import Policy
@@ -194,7 +195,6 @@ async def run_replay(
     approved: bool,
     dry_run: bool,
 ) -> Any:
-    from cua.escalation.session import SessionController
     from cua.replay.engine import IdempotencyStore, ReplayEngine
     from cua.surface.playwright_surface import PlaywrightSurface
 
@@ -220,7 +220,7 @@ async def run_replay(
         session=session,
         idempotency=IdempotencyStore(settings.idempotency_store),
         unattended=not attended,
-        relogin=_relogin,
+        relogin=None,  # RELOGIN = navigate back to the entry page and let the artifact's own steps sign in
         secrets=settings.secrets,
     )
     return await engine.run(
@@ -233,16 +233,41 @@ async def run_replay(
     )
 
 
-async def _relogin(surface: Any) -> None:
-    """Sub-flow used by the RELOGIN interrupt handler. Credentials come from env, never the artifact."""
-    from cua.surface.base import Action
+def _attended_via_service(
+    cap: Capability,
+    inputs: dict[str, str],
+    *,
+    fault: str | None,
+    tenant: str | None,
+    idempotency_key: str | None,
+    approved: bool,
+    dry_run: bool,
+) -> Any:
+    """Attended runs go through the engine service: the human uses the real operator inbox
+    (http://<server>/operator) and, in the container, the noVNC view of that same browser.
+    The CLI is only a client here, so there is exactly one handoff mechanism."""
+    from urllib.parse import urlparse
 
-    page = surface.page
-    sec = settings.secrets
-    await page.goto(settings.mockbank_url + "/login", wait_until="domcontentloaded")
-    await page.fill("input[name=username]", sec.get("username", ""))
-    await page.fill("input[name=password]", sec.get("password", ""))
-    await surface.act(Action(name="key", text="Enter"))
+    import httpx
+
+    from cua.replay.results import ReplayResult
+
+    u = urlparse(cap.entry_url)
+    base = f"{u.scheme}://{u.netloc}"
+    typer.echo(f"[cua] attended run via {base}  |  operator console: {base}/operator", err=True)
+    typer.echo("[cua] when the engine pauses: Take control -> fix the live browser -> Hand back", err=True)
+    body = {
+        "inputs": inputs,
+        "tenant": tenant,
+        "idempotency_key": idempotency_key,
+        "approved_irreversible": approved,
+        "dry_run": dry_run,
+        "attended": True,
+        "fault": fault,
+    }
+    r = httpx.post(f"{base}/capabilities/{cap.id}/invoke", json=body, timeout=900)
+    r.raise_for_status()
+    return ReplayResult.model_validate(r.json())
 
 
 @app.command()
@@ -261,6 +286,20 @@ def replay(
     """Deterministically replay an artifact. No LLM."""
     configure()
     cap = ArtifactStore.load(artifact)
+    if attended:
+        if not ensure_server(cap.entry_url):
+            raise typer.Exit(code=2)
+        res = _attended_via_service(
+            cap,
+            _params(param),
+            fault=fault,
+            tenant=tenant,
+            idempotency_key=idempotency_key,
+            approved=approve_irreversible,
+            dry_run=dry_run,
+        )
+        typer.echo(res.model_dump_json(indent=2))
+        raise typer.Exit(code=0 if res.kind.value in {"success", "business_outcome"} else 1)
     res = asyncio.run(
         run_replay(
             cap,

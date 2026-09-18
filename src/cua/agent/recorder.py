@@ -136,9 +136,7 @@ class Recorder:
                     action=atype,
                     target=target,
                     value=value if atype in {ActionType.TYPE, ActionType.KEY} else None,
-                    postcondition=self._postcondition(
-                        a, actions[i + 1] if i + 1 < len(actions) else None, params
-                    ),
+                    postcondition=post,
                     risk=RiskClass(a.risk),
                     rationale=_template((a.rationale or "")[:200], params) or None,
                 )
@@ -201,12 +199,24 @@ class Recorder:
     def _postcondition(
         a: RecordedAction, nxt: RecordedAction | None, params: dict[str, str]
     ) -> Checkpoint | None:
-        """New URL (in any frame) after the action = the state it produced."""
+        """New URL (in any frame) after the action = the state it produced.
+
+        Only actions that can navigate get one: clicks on buttons/links and Enter keys. A click on a text
+        field never navigates; any "new" URL seen after it is a frame settling late, not its doing.
+        """
+        if a.name in {"left_click", "double_click"}:
+            role = a.probe.candidates[0].value.split("|")[0] if a.probe and a.probe.candidates else ""
+            if a.probe and a.probe.tag in {"input", "textarea", "select"} and role not in {"button", "link"}:
+                return None
+        elif a.name == "key":
+            if str(a.input.get("text", "")).lower() not in {"return", "enter"}:
+                return None
+        else:
+            return None
         before = set(a.urls_before or [a.url_before])
-        after = a.urls_after or ([a.url_after] if a.url_after else [])
-        # the next action's starting state is the most settled view of this action's result
-        if nxt and nxt.urls_before:
-            after = list(nxt.urls_before)
+        after = list(a.urls_after or ([a.url_after] if a.url_after else []))
+        if nxt and nxt.urls_before:  # the next action's starting state is the most settled view
+            after += [u for u in nxt.urls_before if u not in after]
         new = [u for u in after if u and u not in before and not u.startswith("about:")]
         if not new:
             return None

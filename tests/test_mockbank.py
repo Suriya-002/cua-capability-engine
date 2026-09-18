@@ -40,6 +40,20 @@ def test_faults() -> None:
     assert c.get("/bank/member/10023").headers["location"].endswith("Session+expired")
 
 
+def test_one_shot_faults_do_not_repeat_in_a_session() -> None:
+    c = TestClient(app, follow_redirects=False)
+    _login(c)
+    first = c.post("/bank/search", data={"member_id": "10023"}, params={"fault": "interstitial"})
+    assert "/bank/notice" in first.headers["location"]
+    second = c.post("/bank/search", data={"member_id": "10023"}, params={"fault": "interstitial"})
+    assert "/bank/member/10023" in second.headers["location"]  # acknowledged notices don't reappear
+    c.get("/bank/search", params={"fault": "session_expired"})  # expires next request
+    assert c.get("/bank/member/10023", params={"fault": "session_expired"}).status_code == 303
+    _login(c, fault="session_expired")  # re-login with the fault still in the URL
+    c.get("/bank/search", params={"fault": "session_expired"})  # must NOT expire again
+    assert c.get("/bank/member/10023", params={"fault": "session_expired"}).status_code == 200
+
+
 def test_injection_canary_present_but_hidden() -> None:
     c = TestClient(app, follow_redirects=False)
     _login(c)
