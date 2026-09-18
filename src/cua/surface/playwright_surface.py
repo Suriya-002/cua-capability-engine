@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import io
 import math
+from datetime import UTC, datetime
 from typing import Any
 
 from PIL import Image
@@ -193,6 +194,10 @@ class PlaywrightSurface:
                     seen.add(key)
                     out.append(dict(x))
         out.sort(key=lambda e: e.get("ts", 0))
+        for e in out:  # ISO text, not a 13-digit epoch number (looks like a card number to the leak check)
+            ms = e.pop("ts", None)
+            if isinstance(ms, int | float):
+                e["at"] = datetime.fromtimestamp(ms / 1000, tz=UTC).isoformat(timespec="milliseconds")
         return out
 
     async def dom_snapshot(self) -> str | None:
