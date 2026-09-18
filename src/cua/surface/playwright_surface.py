@@ -56,13 +56,16 @@ _HUMAN_RECORDER_JS = r"""
 () => {
   if (window.__cuaRec) return;
   window.__cuaRec = true;
-  const send = (kind, e) => {
-    const t = e.target; if (!t) return;
-    window.__cuaHuman && window.__cuaHuman({kind, tag: t.tagName, text: (t.innerText||t.value||'').slice(0,60),
-      x: e.clientX|0, y: e.clientY|0, url: location.href, ts: Date.now()});
+  window.__cuaQueue = [];
+  const push = (kind, e) => {
+    const t = e.target; if (!t || !t.tagName) return;
+    const text = (t.innerText || t.value || t.getAttribute('name') || '').toString().slice(0, 60);
+    window.__cuaQueue.push({kind, tag: t.tagName.toLowerCase(), text, x: e.clientX|0, y: e.clientY|0,
+                            url: location.href, ts: Date.now()});
   };
-  document.addEventListener('click', e => send('click', e), true);
-  document.addEventListener('change', e => send('change', e), true);
+  document.addEventListener('click', e => push('click', e), true);
+  document.addEventListener('change', e => push('change', e), true);
+  document.addEventListener('submit', e => push('submit', e), true);
 }
 """
 
@@ -169,6 +172,21 @@ class PlaywrightSurface:
         """Main URL first, then every frame (framesets navigate frames, not the page)."""
         assert self.page
         return [self.page.url, *[f.url for f in self.page.frames if f != self.page.main_frame]]
+
+    async def drain_human_events(self) -> list[dict[str, Any]]:
+        """Collect actions a human performed in any frame since the last drain (used during handoff)."""
+        assert self.page
+        out: list[dict[str, Any]] = []
+        for fr in self.page.frames:
+            try:
+                got = await fr.evaluate(
+                    "() => { const q = window.__cuaQueue || []; window.__cuaQueue = []; return q; }"
+                )
+                out.extend(dict(x) for x in got)
+            except Exception:  # detached or navigating frame
+                continue
+        out.sort(key=lambda e: e.get("ts", 0))
+        return out
 
     async def dom_snapshot(self) -> str | None:
         assert self.page

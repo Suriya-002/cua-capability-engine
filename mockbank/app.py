@@ -33,7 +33,7 @@ app = FastAPI(title="LegacyCU (mock)")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 SESSION_COOKIE = "lcu_sid"
-DEMO_USER, DEMO_PASS = "operator", "demo-password"  # synthetic, documented, not a secret
+DEMO_USER, DEMO_PASS = "svc_automation_7f3", "Lcu-demo-9x2Q"  # synthetic mock credentials
 
 TENANTS: dict[str, dict[str, str | None]] = {
     "a": {

@@ -8,7 +8,7 @@ on:
 jobs:
   discover:
     runs-on: ubuntu-latest
-    env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" }
+    env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}", CUA_SECRET_USERNAME: svc_automation_7f3, CUA_SECRET_PASSWORD: Lcu-demo-9x2Q, CUA_HEADLESS: "true" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,6 +16,6 @@ jobs:
       - run: pip install -e . && playwright install --with-deps chromium
       - run: (uvicorn cua.api.app:app --port 7860 &) && sleep 3
       - run: cua discover --goal "${{ inputs.goal }}" --entry http://localhost:7860/bank/login --param member_id=${{ inputs.member_id }} --name lookup_member_balance
-      - run: cua evidence leak-check evidence/ --literal demo-password
+      - run: cua evidence leak-check evidence/
       - uses: stefanzweifel/git-auto-commit-action@v5
         with: { commit_message: "evidence: discovery run", file_pattern: "evidence/**" }

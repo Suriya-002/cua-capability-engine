@@ -477,7 +477,7 @@ class ReplayEngine:
             },
         )
         self.ev.event("intervention_request", request_id=req.id, reason=reason, step=step.n)
-        if not await self.session.wait_for_resume(self.escalation_wait_s):
+        if not await self._wait_for_human(self.escalation_wait_s):
             aborted_by_operator = self.session.state == SessionState.ABORTED
             if not aborted_by_operator:
                 self.session.abort("no operator responded")
@@ -522,6 +522,21 @@ class ReplayEngine:
         if cp.text_absent and cp.text_absent in text:
             return False
         return cp.locator is None
+
+    async def _wait_for_human(self, timeout_s: float) -> bool:
+        """Wait for hand-back while recording what the human does in the live session."""
+        assert self.session is not None
+        deadline = time.monotonic() + timeout_s
+        drain = getattr(self.s, "drain_human_events", None)
+        while True:
+            resumed = await self.session.wait_for_resume(min(0.5, max(0.0, deadline - time.monotonic())))
+            if drain is not None:
+                for ev in await drain():
+                    self.session.record_human_step(**ev)
+            if resumed:
+                return True
+            if self.session.state == SessionState.ABORTED or time.monotonic() >= deadline:
+                return False
 
     async def _check(
         self, cp: Checkpoint, *, quick: bool = False, abort_on: list[Checkpoint] | None = None

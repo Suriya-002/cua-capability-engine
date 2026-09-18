@@ -48,14 +48,18 @@ async def main() -> None:
 
         print("login page")
         await step(
-            s, "username field", loc("user", LocatorStrategy.LABEL_RELATIVE, "User"), "type", "operator"
+            s,
+            "username field",
+            loc("user", LocatorStrategy.LABEL_RELATIVE, "User"),
+            "type",
+            "svc_automation_7f3",
         )
         await step(
             s,
             "password field",
             loc("pass", LocatorStrategy.LABEL_RELATIVE, "Password"),
             "type",
-            "demo-password",
+            "Lcu-demo-9x2Q",
         )
         await step(
             s, "sign in button", loc("sign in", LocatorStrategy.ROLE_NAME, "button|Sign In"), "left_click"
@@ -77,8 +81,10 @@ async def main() -> None:
         btn = await s.resolve(loc("search", LocatorStrategy.ROLE_NAME, "button|Search", "main"), 3000)
         assert btn is not None
         box = await btn.handle.bounding_box()
-        x = int((box["x"] + box["width"] / 2) * s._scale)
-        y = int((box["y"] + box["height"] / 2) * s._scale)
+        frame_el = await s._frame_by_name("main").frame_element()
+        fbox = await frame_el.bounding_box()
+        x = int((box["x"] + fbox["x"] + box["width"] / 2) * s._scale)
+        y = int((box["y"] + fbox["y"] + box["height"] / 2) * s._scale)
         probe = await s.probe(x, y)
         print(f"  probe({x},{y}) -> {probe.description}")
         for c in probe.candidates:

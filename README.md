@@ -54,7 +54,7 @@ cua replay ... --fault error_500 --attended
 
 # 7. Evidence integrity and leak check
 cua evidence verify evidence/
-cua evidence leak-check evidence/ --literal demo-password
+cua evidence leak-check evidence/   # secrets from .env are checked automatically
 ```
 
 Via HTTP (what an AI agent would call): `GET /capabilities`, `GET /capabilities/lookup_member_balance`,

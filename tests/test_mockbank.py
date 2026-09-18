@@ -5,7 +5,7 @@ from mockbank.app import app
 
 
 def _login(c: TestClient, **q: str) -> None:
-    r = c.post("/bank/login", data={"username": "operator", "password": "demo-password"}, params=q)
+    r = c.post("/bank/login", data={"username": "svc_automation_7f3", "password": "Lcu-demo-9x2Q"}, params=q)
     assert r.status_code == 303
 
 

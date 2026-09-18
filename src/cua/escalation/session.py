@@ -123,10 +123,11 @@ class SessionController:
         if self.request is None:
             raise IllegalTransition("no intervention request to acquire")
         self.request.acquired_by = operator
-        self._to(SessionState.HUMAN, Controller.HUMAN, operator=operator, request_id=self.request.id)
+        self._to(SessionState.HUMAN, Controller.HUMAN, acquired_by=operator, request_id=self.request.id)
 
     def record_human_step(self, **step: Any) -> None:
-        if self.state != SessionState.HUMAN or self.request is None:
+        # actions are drained in batches, so some arrive just after the hand-back (RESUMING); still theirs
+        if self.state not in {SessionState.HUMAN, SessionState.RESUMING} or self.request is None:
             return
         self.request.human_steps.append(step)
         self._ev.event("human_step", request_id=self.request.id, **step)

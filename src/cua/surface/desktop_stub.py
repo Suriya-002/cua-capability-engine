@@ -52,6 +52,9 @@ class DesktopSurface:
     async def dom_snapshot(self) -> str | None:
         return None
 
+    async def drain_human_events(self) -> list[dict[str, Any]]:
+        return []
+
     async def fingerprint(self) -> str:
         raise NotImplementedError
 

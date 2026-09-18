@@ -70,6 +70,12 @@ class FakeSurface:
     async def dom_snapshot(self) -> str | None:
         return None
 
+    human_queue: list[dict[str, Any]] = []
+
+    async def drain_human_events(self) -> list[dict[str, Any]]:
+        q, self.human_queue = self.human_queue, []
+        return q
+
     async def fingerprint(self) -> str:
         return "fp"
 
@@ -215,7 +221,9 @@ async def _attended_run(tmp_path: Path) -> tuple[Any, list[str]]:
         while session.request is None:
             await asyncio.sleep(0.05)
         session.acquire("tester")
-        session.record_human_step(kind="click", text="Search")
+        s.human_queue.append(
+            {"kind": "click", "tag": "input", "text": "Search", "url": "http://x/bank/search", "ts": 1}
+        )
         s.state = "member"  # the human completes the step by hand
         session.release("did the search manually")
 

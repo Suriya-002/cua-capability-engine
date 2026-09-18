@@ -57,9 +57,9 @@ def act(
 def _outcome() -> DiscoveryOutcome:
     a = [
         act("left_click", probe("textbox 'User'", "textbox", "User"), [LOGIN], [LOGIN]),
-        act("type", None, [LOGIN], [LOGIN], text="operator"),
+        act("type", None, [LOGIN], [LOGIN], text="svc_automation_7f3"),
         act("left_click", probe("textbox 'Password'", "textbox", "Password"), [LOGIN], [LOGIN]),
-        act("type", None, [LOGIN], [LOGIN], text="demo-password"),
+        act("type", None, [LOGIN], [LOGIN], text="Lcu-demo-9x2Q"),
         act("left_click", probe("button 'Sign In'", "button", "Sign In"), [LOGIN], [FRAMES, NAV, SEARCH]),
         act("screenshot", None, [FRAMES, NAV, SEARCH], [FRAMES, NAV, SEARCH]),
         act(
@@ -103,14 +103,14 @@ def test_recorder_builds_contract() -> None:
         },
         output_specs={"savings_balance": (ParamType.DECIMAL, "savings")},
         output_locators={"savings_balance": savings_locator()},
-        secrets={"username": "operator", "password": "demo-password"},
+        secrets={"username": "svc_automation_7f3", "password": "Lcu-demo-9x2Q"},
         interrupts=DEFAULT_INTERRUPTS,
         outcomes=DEFAULT_OUTCOMES,
         success=Checkpoint(text_contains="Current Balance", url_pattern=r"/bank/member/"),
     )
     # no secrets or PII anywhere in the serialised artifact
     dumped = cap.model_dump_json()
-    for leak in ("operator", "demo-password", "10023", "$10,059.06"):
+    for leak in ("svc_automation_7f3", "Lcu-demo-9x2Q", "10023", "$10,059.06"):
         assert leak not in dumped, leak
     assert cap.goal == "Look up member {member_id} and read their savings balance"
     assert set(cap.secrets) == {"username", "password"}

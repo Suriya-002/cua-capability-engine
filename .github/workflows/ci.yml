@@ -23,8 +23,9 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev]" && playwright install --with-deps chromium
       - name: replay recorded artifact against injected faults (no LLM)
+        env: { CUA_SECRET_USERNAME: svc_automation_7f3, CUA_SECRET_PASSWORD: Lcu-demo-9x2Q, CUA_HEADLESS: "true" }
         run: pytest -m live -q -k "not discovery"
       - name: evidence chain + leak check
         run: |
           cua evidence verify evidence/ || true
-          cua evidence leak-check evidence/ --literal demo-password
+          cua evidence leak-check evidence/
