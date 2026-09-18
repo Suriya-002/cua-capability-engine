@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block body %}
+<h3>Member Detail</h3>
+<table class="form" border="1" cellspacing="0">
+<tr><td>{{ t.member_label }}</td><td>{{ m.id }}</td></tr>
+<tr><td>Name</td><td>{{ m.name }}</td></tr>
+<tr><td>Member Since</td><td>{{ m.since }}</td></tr>
+<tr><td>Status</td><td>{{ m.status }}</td></tr>
+</table>
+<h4>Accounts</h4>
+<table border="1" cellspacing="0" cellpadding="4">
+<tr><td><b>Product</b></td><td><b>Current Balance</b></td></tr>
+<tr><td>Savings</td><td>{{ m.savings }}</td></tr>
+<tr><td>Checking</td><td>{{ m.checking }}</td></tr>
+</table>
+<p><a href="/bank/member/{{ m.id }}/subaccount/new{% if fault %}?fault={{fault}}{% endif %}">Open Sub-Account</a> &nbsp;
+<a href="/bank/search{% if fault %}?fault={{fault}}{% endif %}">Back to Search</a></p>
+{% endblock %}

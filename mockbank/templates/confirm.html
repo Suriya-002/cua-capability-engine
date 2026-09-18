@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block body %}
+<h3>Confirmation</h3>
+<div class="ok">Sub-account opened.</div>
+<table class="form" border="1" cellspacing="0">
+<tr><td>Confirmation #</td><td>{{ conf }}</td></tr>
+<tr><td>Member</td><td>{{ m.name }} ({{ m.id }})</td></tr>
+<tr><td>Product</td><td>{{ product }}</td></tr>
+<tr><td>Nickname</td><td>{{ nickname }}</td></tr></table>
+{% endblock %}

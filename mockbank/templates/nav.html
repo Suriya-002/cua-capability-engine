@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block body %}
+<table class="form">
+<tr><td><a href="/bank/search{% if fault %}?fault={{fault}}{% endif %}" target="main">Member Search</a></td></tr>
+<tr><td><a href="/bank/admin" target="main">Admin</a></td></tr>
+<tr><td><a href="/bank/login" target="_top">Sign Out</a></td></tr></table>
+{% endblock %}

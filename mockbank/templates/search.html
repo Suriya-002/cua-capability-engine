@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block body %}
+<h3>Member Search</h3>
+<form method="post" action="/bank/search{% if fault %}?fault={{fault}}{% endif %}">
+<table class="form"><tr><td>{{ t.member_label }}</td><td><input name="member_id" size="12"></td></tr>
+{% if t.extra_field %}<tr><td>{{ t.extra_field }}</td><td><input name="branch" size="6" value="001"></td></tr>{% endif %}
+<tr><td></td><td><input type="submit" class="btn" value="{{ t.search_btn }}"></td></tr></table></form>
+{% endblock %}

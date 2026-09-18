@@ -1,0 +1,5 @@
+<html><head><title>{{ t.name }} - Workspace</title></head>
+<frameset cols="180,*">
+  <frame name="nav" src="/bank/nav{% if fault %}?fault={{fault}}{% endif %}">
+  <frame name="main" src="/bank/search{% if fault %}?fault={{fault}}{% endif %}">
+</frameset></html>

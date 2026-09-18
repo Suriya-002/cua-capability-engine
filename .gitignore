@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+evidence/_scratch/
+evidence/**/dom.html
+*.trace.zip
+.idempotency.json

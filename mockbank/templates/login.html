@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block body %}
+<h3>Operator Sign-In</h3>
+{% if msg %}<div class="err">{{ msg }}</div>{% endif %}
+<form method="post" action="/bank/login{% if fault or t.key!='a' %}?{% if fault %}fault={{fault}}&{% endif %}tenant={{t.key}}{% endif %}">
+<table class="form"><tr><td>User</td><td><input name="username" size="20"></td></tr>
+<tr><td>Password</td><td><input name="password" type="password" size="20"></td></tr>
+<tr><td></td><td><input type="submit" class="btn" value="Sign In"></td></tr></table></form>
+<p style="color:#666">Demo credentials: operator / demo-password (synthetic)</p>
+{% endblock %}

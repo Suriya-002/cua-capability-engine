@@ -1,0 +1,21 @@
+# Manual-only: the one workflow that spends LLM tokens. Commits fresh evidence + artifact.
+name: discovery-run
+on:
+  workflow_dispatch:
+    inputs:
+      goal: { default: "Look up member 10023 and read their savings balance" }
+      member_id: { default: "10023" }
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e . && playwright install --with-deps chromium
+      - run: (uvicorn cua.api.app:app --port 7860 &) && sleep 3
+      - run: cua discover --goal "${{ inputs.goal }}" --entry http://localhost:7860/bank/login --param member_id=${{ inputs.member_id }} --name lookup_member_balance
+      - run: cua evidence leak-check evidence/ --literal demo-password
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with: { commit_message: "evidence: discovery run", file_pattern: "evidence/**" }

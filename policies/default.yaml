@@ -1,0 +1,21 @@
+# Policy is data. Discovery and replay both enforce it before every action.
+name: mockbank-default
+allowed_hosts:
+  - localhost
+  - 127.0.0.1
+  - cua-demo.azurecontainerapps.io   # replace with the real FQDN after deploy
+allowed_path_patterns:
+  - ^/bank(/|$)
+denied_path_patterns:
+  - ^/bank/admin
+  - ^/bank/wire
+allowed_actions: [navigate, click, type, select, key, scroll, wait_for, extract]
+risk_rules:
+  - { pattern: "\\b(submit|confirm|open account|create)\\b", risk: irreversible }
+  - { pattern: "\\b(transfer|wire|pay|delete|close)\\b",     risk: irreversible }
+  - { pattern: "\\b(save|update|edit)\\b",                    risk: risky }
+# Unattended replay may perform up to this class without a human. Anything above escalates unless
+# the caller passes approved_irreversible=True AND the artifact is approved.
+unattended_max_risk: risky
+require_approved_for_unattended: true
+max_steps: 60

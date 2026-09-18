@@ -1,0 +1,30 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: ruff check . && ruff format --check .
+      - run: mypy
+      - run: pytest -m "not live" -q
+      - name: secrets scan
+        uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+  browser:
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]" && playwright install --with-deps chromium
+      - name: replay recorded artifact against injected faults (no LLM)
+        run: pytest -m live -q -k "not discovery"
+      - name: evidence chain + leak check
+        run: |
+          cua evidence verify evidence/ || true
+          cua evidence leak-check evidence/ --literal demo-password
