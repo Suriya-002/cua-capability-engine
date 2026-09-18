@@ -40,6 +40,13 @@ def test_faults() -> None:
     assert c.get("/bank/member/10023").headers["location"].endswith("Session+expired")
 
 
+def test_error_500_is_transient() -> None:
+    c = TestClient(app, follow_redirects=False)
+    _login(c)
+    assert c.get("/bank/member/10023", params={"fault": "error_500"}).status_code == 500
+    assert c.get("/bank/member/10023", params={"fault": "error_500"}).status_code == 200  # retry succeeds
+
+
 def test_one_shot_faults_do_not_repeat_in_a_session() -> None:
     c = TestClient(app, follow_redirects=False)
     _login(c)

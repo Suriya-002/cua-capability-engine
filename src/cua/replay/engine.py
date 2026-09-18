@@ -33,7 +33,7 @@ from cua.artifact.schema import (
     Step,
     Transform,
 )
-from cua.escalation.session import SessionController
+from cua.escalation.session import SessionController, SessionState
 from cua.evidence.writer import EvidenceWriter
 from cua.policy.engine import Policy
 from cua.policy.redaction import Redactor
@@ -478,13 +478,15 @@ class ReplayEngine:
         )
         self.ev.event("intervention_request", request_id=req.id, reason=reason, step=step.n)
         if not await self.session.wait_for_resume(self.escalation_wait_s):
-            self.session.abort("no operator responded")
+            aborted_by_operator = self.session.state == SessionState.ABORTED
+            if not aborted_by_operator:
+                self.session.abort("no operator responded")
             res.kind = ResultKind.ESCALATED
             res.failure = FailureDetail(
                 step_n=step.n,
                 action=step.action.value,
                 expected="operator to resume",
-                observed="timeout",
+                observed="aborted by operator" if aborted_by_operator else "timeout waiting for operator",
                 category="aborted",
                 evidence=[str(shot)],
             )

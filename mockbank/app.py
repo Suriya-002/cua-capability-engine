@@ -8,7 +8,7 @@ session, synthetic members (Faker, seeded). Faults are injected via `?fault=` or
     interstitial       a "System Notice" page appears before the requested screen
     permission_denied  sub-account screen says "You are not authorized"
     slow               the member detail takes ~4 s and shows "Loading…" first
-    error_500          the member detail raises a 500
+    error_500          the member detail returns a 500 once (transient outage); a retry succeeds
 
 `?tenant=b` renders the same app with different branding/labels and one extra field, standing in
 for a second institution running the same vendor product.
@@ -180,8 +180,10 @@ async def member(request: Request, member_id: str) -> HTMLResponse:
     if not _authed(request):
         return RedirectResponse("/bank/login?msg=Session+expired", status_code=303)  # type: ignore[return-value]
     f = _fault(request)
-    if f == "error_500":
-        raise RuntimeError("core host unavailable (simulated)")
+    if _fault_once(request, "error_500"):
+        resp = HTMLResponse("Internal Server Error", status_code=500)
+        _mark_fired(resp, request, "error_500")  # transient: the next attempt succeeds
+        return resp
     if f == "slow" and not request.query_params.get("loaded"):
         await asyncio.sleep(4)
         return RedirectResponse(

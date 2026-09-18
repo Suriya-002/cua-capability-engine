@@ -259,6 +259,16 @@ async def release(rid: str, request: Request) -> dict[str, str]:
     return {"state": s.state.value, "controller": s.controller.value}
 
 
+@app.post("/operator/{rid}/abort")
+async def abort(rid: str, request: Request) -> dict[str, str]:
+    form = await request.form()
+    s = _active.get(rid)
+    if not s or s.state not in {SessionState.PAUSED, SessionState.HUMAN}:
+        raise HTTPException(409, "request not in PAUSED/HUMAN state")
+    s.abort(f"aborted by {form.get('operator') or 'operator'}: {form.get('resolution') or 'no reason given'}")
+    return {"state": s.state.value, "controller": s.controller.value}
+
+
 @app.get("/operator/requests")
 def requests_json() -> list[dict[str, Any]]:
     return [
@@ -305,8 +315,9 @@ async function load() {
   try { reqs = await (await fetch('/operator/requests')).json(); } catch (e) { return; }
   if (!reqs.length) { rows.innerHTML = '<tr><td colspan="8" class="muted">No open intervention requests.</td></tr>'; return; }
   rows.innerHTML = reqs.map(q => {
-    const btn = q.state === 'paused' ? `<button onclick="act('${q.id}','acquire')">Take control</button>`
-              : q.state === 'human' ? `<button onclick="act('${q.id}','release')">Hand back</button>`
+    const abort = ` <button onclick="act('${q.id}','abort')" title="End this run as failed">Abort</button>`;
+    const btn = q.state === 'paused' ? `<button onclick="act('${q.id}','acquire')">Take control</button>` + abort
+              : q.state === 'human' ? `<button onclick="act('${q.id}','release')">Hand back</button>` + abort
               : '<span class="muted">engine running</span>';
     return `<tr><td>${esc(q.id)}</td><td>${esc(q.capability)}</td><td>${esc(q.step)}</td><td>${esc(q.reason)}</td>
             <td>${esc(q.browser ?? '')}</td><td class="${esc(q.state)}">${esc(q.state)}</td><td>${esc(q.operator ?? '')}</td><td>${btn}</td></tr>`;
@@ -314,7 +325,8 @@ async function load() {
 }
 async function act(id, verb) {
   const operator = document.getElementById('op').value || 'operator';
-  const resolution = verb === 'release' ? (prompt('What did you do in the live session?') || 'resolved by operator') : '';
+  const resolution = verb === 'release' ? (prompt('What did you do in the live session?') || 'resolved by operator')
+                   : verb === 'abort' ? (prompt('Why abort?') || 'no reason given') : '';
   const r = await fetch(`/operator/${id}/${verb}`, { method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: new URLSearchParams({ operator, resolution }) });
