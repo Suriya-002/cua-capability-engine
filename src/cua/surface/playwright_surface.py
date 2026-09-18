@@ -53,20 +53,24 @@ _PROBE_JS = r"""
 """
 
 _HUMAN_RECORDER_JS = r"""
-() => {
+(() => {
   if (window.__cuaRec) return;
   window.__cuaRec = true;
-  window.__cuaQueue = [];
+  // Queue lives in sessionStorage so events survive the navigation they trigger (form submits, links)
+  // and are shared by every same-origin frame of this tab.
+  const KEY = '__cuaQueue';
+  const read = () => { try { return JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) { return []; } };
   const push = (kind, e) => {
     const t = e.target; if (!t || !t.tagName) return;
     const text = (t.innerText || t.value || t.getAttribute('name') || '').toString().slice(0, 60);
-    window.__cuaQueue.push({kind, tag: t.tagName.toLowerCase(), text, x: e.clientX|0, y: e.clientY|0,
-                            url: location.href, ts: Date.now()});
+    const ev = {kind, tag: t.tagName.toLowerCase(), text, x: e.clientX|0, y: e.clientY|0, url: location.href, ts: Date.now()};
+    try { const q = read(); q.push(ev); sessionStorage.setItem(KEY, JSON.stringify(q)); } catch (err) {}
   };
+  window.__cuaDrain = () => { const q = read(); try { sessionStorage.removeItem(KEY); } catch (e) {} return q; };
   document.addEventListener('click', e => push('click', e), true);
   document.addEventListener('change', e => push('change', e), true);
   document.addEventListener('submit', e => push('submit', e), true);
-}
+})();
 """
 
 
@@ -177,14 +181,17 @@ class PlaywrightSurface:
         """Collect actions a human performed in any frame since the last drain (used during handoff)."""
         assert self.page
         out: list[dict[str, Any]] = []
+        seen: set[tuple[Any, ...]] = set()
         for fr in self.page.frames:
             try:
-                got = await fr.evaluate(
-                    "() => { const q = window.__cuaQueue || []; window.__cuaQueue = []; return q; }"
-                )
-                out.extend(dict(x) for x in got)
+                got = await fr.evaluate("() => (window.__cuaDrain ? window.__cuaDrain() : [])")
             except Exception:  # detached or navigating frame
                 continue
+            for x in got:
+                key = (x.get("ts"), x.get("kind"), x.get("url"), x.get("text"))
+                if key not in seen:  # same-origin frames share the store; count each event once
+                    seen.add(key)
+                    out.append(dict(x))
         out.sort(key=lambda e: e.get("ts", 0))
         return out
 

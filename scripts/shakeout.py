@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import sys
 
+from cua.api.localserver import ensure_server
 from cua.artifact.schema import Locator, LocatorCandidate, LocatorStrategy
 from cua.surface.base import Action
 from cua.surface.playwright_surface import PlaywrightSurface
@@ -38,6 +39,8 @@ async def step(
 
 
 async def main() -> None:
+    if not ensure_server(BASE):
+        raise SystemExit("could not start the local server")
     s = PlaywrightSurface(headless=False, viewport=(1280, 800), slow_mo=150)
     await s.start(f"{BASE}/login")
     try:

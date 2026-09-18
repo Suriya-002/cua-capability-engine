@@ -95,7 +95,7 @@ class EvidenceWriter:
         }
         p = self.dir / "summary.json"
         p.write_text(
-            json.dumps(self._redactor.redact_obj(body), indent=2, ensure_ascii=False),
+            json.dumps(self._redactor.redact_obj(body), indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         return p
