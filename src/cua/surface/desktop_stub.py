@@ -46,6 +46,9 @@ class DesktopSurface:
     async def current_url(self) -> str:
         return "desktop://"
 
+    async def all_urls(self) -> list[str]:
+        return ["desktop://"]
+
     async def dom_snapshot(self) -> str | None:
         return None
 

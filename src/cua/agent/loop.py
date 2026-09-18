@@ -13,6 +13,7 @@ the clicked point) so the Recorder can emit an artifact without re-reading the t
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import time
@@ -56,6 +57,8 @@ class RecordedAction:
     input: dict[str, Any]
     url_before: str
     url_after: str | None = None
+    urls_before: list[str] = field(default_factory=list)
+    urls_after: list[str] = field(default_factory=list)
     probe: Any = None  # ProbeResult for click/type targets
     rationale: str | None = None
     risk: str = "safe"
@@ -114,7 +117,12 @@ class DiscoveryAgent:
         self._pending_rationale: str | None = None
 
     async def run(
-        self, goal: str, entry_url: str, params: dict[str, str], param_sensitivity: dict[str, str]
+        self,
+        goal: str,
+        entry_url: str,
+        params: dict[str, str],
+        param_sensitivity: dict[str, str],
+        secrets: dict[str, str] | None = None,
     ) -> DiscoveryOutcome:
         t0 = time.monotonic()
         await self.surface.start(entry_url)
@@ -127,7 +135,7 @@ class DiscoveryAgent:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": user_prompt(goal, params, param_sensitivity)},
+                    {"type": "text", "text": user_prompt(goal, params, param_sensitivity, secrets or {})},
                     {
                         "type": "image",
                         "source": {
@@ -297,7 +305,10 @@ class DiscoveryAgent:
             duration=float(inp.get("duration", 0)),
         )
         r = await self.surface.act(a)
+        if name in _MEMBER_TO_ACTIONTYPE:
+            await asyncio.sleep(0.6)  # let a click-triggered navigation settle before reading state
         rec.url_after = await self.surface.current_url()
+        rec.urls_after = await self.surface.all_urls()
         rec.ok, rec.error = r.ok, r.error
         if name in {"screenshot", "zoom"} and r.png:
             p = self.ev.screenshot(r.png, name)
@@ -307,7 +318,7 @@ class DiscoveryAgent:
             "agent_action",
             turn=turn,
             action=name,
-            input=inp,
+            input={**inp, "text": "[typed]"} if name == "type" else inp,
             ok=r.ok,
             error=r.error,
             risk=rec.risk,

@@ -158,6 +158,11 @@ class PlaywrightSurface:
         assert self.page
         return self.page.url
 
+    async def all_urls(self) -> list[str]:
+        """Main URL first, then every frame (framesets navigate frames, not the page)."""
+        assert self.page
+        return [self.page.url, *[f.url for f in self.page.frames if f != self.page.main_frame]]
+
     async def dom_snapshot(self) -> str | None:
         assert self.page
         try:
@@ -241,7 +246,7 @@ class PlaywrightSurface:
                     value=f'[name="{name}"]',
                     confidence=0.85,
                     frame=frame,
-                    note="form field name — stable in server-rendered apps",
+                    note="form field name - stable in server-rendered apps",
                 )
             )
         if text and role not in {"textbox", "combobox"}:
@@ -314,6 +319,8 @@ class PlaywrightSurface:
             role, _, nm = c.value.partition("|")
             return fr.get_by_role(role, name=nm, exact=True)  # type: ignore[arg-type]
         if s == LocatorStrategy.LABEL_RELATIVE:
+            if c.value.startswith(("xpath=", "css=")):
+                return fr.locator(c.value)
             if c.value.startswith("placeholder:"):
                 return fr.get_by_placeholder(c.value.split(":", 1)[1])
             # table-layout legacy apps: label is the previous cell → walk to the next control

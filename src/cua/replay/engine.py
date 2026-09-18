@@ -41,6 +41,7 @@ from cua.replay.results import DriftProposal, FailureDetail, RecoveryEvent, Repl
 from cua.surface.base import Action, Surface
 
 PARAM_REF = re.compile(r"\$\{inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\}")
+SECRET_REF = re.compile(r"\$\{secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 
 class IdempotencyStore:
@@ -71,6 +72,7 @@ class ReplayEngine:
         unattended: bool = True,
         escalation_wait_s: float = 600,
         relogin: Any = None,  # async callable(surface) -> None
+        secrets: dict[str, str] | None = None,  # from env; never logged
     ) -> None:
         self.s, self.policy, self.ev, self.redactor = surface, policy, evidence, redactor
         self.session = session
@@ -78,6 +80,8 @@ class ReplayEngine:
         self.unattended = unattended
         self.escalation_wait_s = escalation_wait_s
         self.relogin = relogin
+        self.secrets = secrets or {}
+        self.redactor.register(*self.secrets.values())
 
     # ------------------------------------------------------------------------------ public
     async def run(
@@ -94,6 +98,11 @@ class ReplayEngine:
         cap = cap.apply_tenant(tenant)
         res = ReplayResult(kind=ResultKind.FAILURE, capability_ref=cap.ref, run_id=self.ev.run_id)
         self._validate_inputs(cap, inputs)
+        missing = [k for k in cap.secrets if k not in self.secrets]
+        if missing:
+            return self._fail(
+                res, None, None, f"secrets supplied via env: {missing}", "missing", "policy", t0
+            )
         for k, spec in cap.inputs.items():
             if spec.sensitivity.value != "none" and inputs.get(k):
                 self.redactor.register(inputs[k])
@@ -314,7 +323,11 @@ class ReplayEngine:
             n=step.n,
             action=step.action.value,
             target=(step.target.description if step.target else None),
-            value=("${...}" if step.value and PARAM_REF.search(step.value) else step.value),
+            value=(
+                "${...}"
+                if step.value and (PARAM_REF.search(step.value) or SECRET_REF.search(step.value))
+                else step.value
+            ),
             ok=ar.ok,
             error=ar.error,
         )
@@ -435,11 +448,11 @@ class ReplayEngine:
         deadline = time.monotonic() + (0.3 if quick else cp.timeout_ms / 1000)
         observed = ""
         while True:
-            url = await self.s.current_url()
+            urls = await self.s.all_urls()
             text = await self.s.read_text()
             ok = True
-            if cp.url_pattern and not re.search(cp.url_pattern, url):
-                ok, observed = False, f"url={url}"
+            if cp.url_pattern and not any(re.search(cp.url_pattern, u) for u in urls):
+                ok, observed = False, f"urls={urls}"
             if ok and cp.text_contains and cp.text_contains not in text:
                 ok, observed = False, f"text lacks '{cp.text_contains}'"
             if ok and cp.text_absent and cp.text_absent in text:
@@ -465,11 +478,11 @@ class ReplayEngine:
             parts.append(f"visible: {cp.locator.description}")
         return " AND ".join(parts)
 
-    @staticmethod
-    def _substitute(value: str | None, inputs: dict[str, str]) -> str | None:
+    def _substitute(self, value: str | None, inputs: dict[str, str]) -> str | None:
         if value is None:
             return None
-        return PARAM_REF.sub(lambda m: inputs.get(m.group(1), ""), value)
+        value = PARAM_REF.sub(lambda m: inputs.get(m.group(1), ""), value)
+        return SECRET_REF.sub(lambda m: self.secrets.get(m.group(1), ""), value)
 
     @staticmethod
     def _to_action(step: Step, handle: Any, value: str | None) -> Action:

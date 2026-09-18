@@ -29,11 +29,28 @@ class Settings(BaseSettings):
     idempotency_store: Path = Path(".idempotency.json")
 
     @property
+    def secrets(self) -> dict[str, str]:
+        """CUA_SECRET_<NAME>=value -> {"name": value}. Supplied to discovery and replay, never persisted."""
+        import os
+
+        prefix = "CUA_SECRET_"
+        found = {k[len(prefix) :].lower(): v for k, v in os.environ.items() if k.startswith(prefix) and v}
+        # .env is loaded by pydantic-settings for declared fields only; read it for secrets too
+        env_file = Path(".env")
+        if env_file.exists():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith(prefix) and "=" in line:
+                    k, _, v = line.partition("=")
+                    found.setdefault(k[len(prefix) :].strip().lower(), v.strip())
+        return found
+
+    @property
     def redact_values(self) -> list[str]:
         vals = [v.strip() for v in self.redact_literals.split(",") if v.strip()]
         key = self.anthropic_api_key.get_secret_value()
         if key:
             vals.append(key)
+        vals.extend(self.secrets.values())
         return vals
 
 

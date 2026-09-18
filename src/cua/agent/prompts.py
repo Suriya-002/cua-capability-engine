@@ -21,8 +21,15 @@ Rules:
 """
 
 
-def user_prompt(goal: str, params: dict[str, str], sensitivity: dict[str, str]) -> str:
+def user_prompt(
+    goal: str, params: dict[str, str], sensitivity: dict[str, str], secrets: dict[str, str]
+) -> str:
     lines = [f"GOAL: {goal}", ""]
+    if secrets:
+        lines.append("<robot_credentials>")
+        lines.extend(f"  {k}: {v}" for k, v in secrets.items())
+        lines.append("</robot_credentials>")
+        lines.append("")
     if params:
         lines.append("PARAMETERS (use these literal values where the goal needs them):")
         for k, v in params.items():

@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 PARAM_REF = re.compile(r"\$\{inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\}")
+SECRET_REF = re.compile(r"\$\{secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 
 class Strict(BaseModel):
@@ -172,6 +173,13 @@ class Transform(StrEnum):
     INTEGER = "integer"
 
 
+class SecretSpec(Strict):
+    """A credential the capability needs. Never has a value in the artifact; supplied at replay from
+    the environment as CUA_SECRET_<NAME>. Steps reference it as ${secrets.<name>}."""
+
+    description: str
+
+
 class OutputSpec(Strict):
     type: ParamType
     description: str
@@ -230,6 +238,7 @@ class Capability(Strict):
     entry_url: str
     risk_class: RiskClass = RiskClass.SAFE
     inputs: dict[str, ParamSpec] = Field(default_factory=dict)
+    secrets: dict[str, SecretSpec] = Field(default_factory=dict)
     outputs: dict[str, OutputSpec] = Field(default_factory=dict)
     steps: list[Step] = Field(..., min_length=1)
     interrupts: list[Interrupt] = Field(default_factory=list)
@@ -260,6 +269,9 @@ class Capability(Strict):
                 for ref in PARAM_REF.findall(s.value):
                     if ref not in self.inputs:
                         raise ValueError(f"step {s.n} references unknown input '{ref}'")
+                for ref in SECRET_REF.findall(s.value):
+                    if ref not in self.secrets:
+                        raise ValueError(f"step {s.n} references undeclared secret '{ref}'")
         if self.risk_class == RiskClass.IRREVERSIBLE and self.idempotent:
             raise ValueError("irreversible capabilities must set idempotent=False")
         codes = [o.code for o in self.outcomes]
@@ -276,11 +288,13 @@ class Capability(Strict):
         """Human/agent-readable summary. This is what a catalog shows."""
         ins = ", ".join(f"{k}: {v.type.value}{'' if v.required else '?'}" for k, v in self.inputs.items())
         outs = ", ".join(f"{k}: {v.type.value}" for k, v in self.outputs.items())
+        secs = ", ".join(self.secrets) or "—"
         codes = ", ".join(o.code for o in self.outcomes) or "—"
         return (
             f"{self.ref}  [{self.approval.value}, risk={self.risk_class.value}]\n"
             f"  {self.name}: {self.goal}\n"
             f"  inputs:   {ins or '—'}\n"
+            f"  secrets:  {secs} (from env at replay; never stored)\n"
             f"  outputs:  {outs or '—'}\n"
             f"  outcomes: {codes}\n"
             f"  steps:    {len(self.steps)}  interrupts: {len(self.interrupts)}"

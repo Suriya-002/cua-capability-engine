@@ -26,9 +26,6 @@ from cua.artifact.schema import (
     ApprovalState,
     Capability,
     Checkpoint,
-    Locator,
-    LocatorCandidate,
-    LocatorStrategy,
     ParamSpec,
     ParamType,
     RiskClass,
@@ -82,12 +79,14 @@ async def run_discovery(
     from anthropic import AsyncAnthropic
 
     from cua.agent.loop import DiscoveryAgent
-    from cua.agent.recorder import DEFAULT_INTERRUPTS, DEFAULT_OUTCOMES, Recorder
+    from cua.agent.recorder import DEFAULT_INTERRUPTS, DEFAULT_OUTCOMES, Recorder, savings_locator
     from cua.surface.playwright_surface import PlaywrightSurface
 
     if not ensure_server(entry):
         raise typer.Exit(code=2)
     red = _redactor()
+    secrets = settings.secrets
+    red.register(*[v for k, v in params.items() if k == "member_id"])  # PII never lands in evidence
     ev = EvidenceWriter(settings.evidence_dir, "discovery", red)
     policy = Policy.load(settings.policy_path)
     surface = PlaywrightSurface(
@@ -106,7 +105,7 @@ async def run_discovery(
     )
     sens = {k: ("pii" if k == "member_id" else "none") for k in params}
     try:
-        outcome = await agent.run(goal, entry, params, sens)
+        outcome = await agent.run(goal, entry, params, sens, secrets)
         fp = await surface.fingerprint()
     finally:
         await surface.stop()
@@ -116,28 +115,9 @@ async def run_discovery(
         typer.echo(f"discovery ended with status={outcome.status}: {outcome.summary}")
         return Path(ev.dir), outcome
 
-    # Declared outputs -> extraction locators. Default: "savings_balance" from the Savings row.
+    # Declared outputs -> extraction locators (label-anchored; never literal values).
     outputs = outputs or {"savings_balance": "decimal"}
-    out_locs = {
-        oname: Locator(
-            description=f"{oname} cell",
-            candidates=[
-                LocatorCandidate(
-                    strategy=LocatorStrategy.CSS_STRUCTURAL,
-                    frame="main",
-                    confidence=0.9,
-                    value="xpath=//tr[td[normalize-space()='Savings']]/td[2]",
-                ),
-                LocatorCandidate(
-                    strategy=LocatorStrategy.TEXT,
-                    frame="main",
-                    confidence=0.4,
-                    value=outcome.outputs.get(oname, ""),
-                ),
-            ],
-        )
-        for oname in outputs
-    }
+    out_locs = {oname: savings_locator() for oname in outputs}
     rec = Recorder(
         cap_id=name,
         name=name.replace("_", " ").title(),
@@ -166,6 +146,7 @@ async def run_discovery(
             for k, v in outputs.items()
         },
         output_locators=out_locs,
+        secrets=secrets,
         interrupts=DEFAULT_INTERRUPTS,
         outcomes=DEFAULT_OUTCOMES,
         success=Checkpoint(text_contains="Current Balance", url_pattern=r"/bank/member/"),
@@ -240,6 +221,7 @@ async def run_replay(
         idempotency=IdempotencyStore(settings.idempotency_store),
         unattended=not attended,
         relogin=_relogin,
+        secrets=settings.secrets,
     )
     return await engine.run(
         cap,
@@ -253,14 +235,13 @@ async def run_replay(
 
 async def _relogin(surface: Any) -> None:
     """Sub-flow used by the RELOGIN interrupt handler. Credentials come from env, never the artifact."""
-    import os
-
     from cua.surface.base import Action
 
     page = surface.page
+    sec = settings.secrets
     await page.goto(settings.mockbank_url + "/login", wait_until="domcontentloaded")
-    await page.fill("input[name=username]", os.getenv("MOCKBANK_USER", "operator"))
-    await page.fill("input[name=password]", os.getenv("MOCKBANK_PASS", "demo-password"))
+    await page.fill("input[name=username]", sec.get("username", ""))
+    await page.fill("input[name=password]", sec.get("password", ""))
     await surface.act(Action(name="key", text="Enter"))
 
 

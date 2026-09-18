@@ -2,20 +2,24 @@
 
 Rules applied:
 - Only successful, state-changing actions become steps (screenshots/zooms/waits are dropped).
-- Typed literal values equal to a provided parameter are parameterised as ${inputs.<name>}.
+- A typed literal equal to a provided parameter becomes ${inputs.<name>}; one equal to a supplied
+  credential becomes ${secrets.<name>}. Neither literal is ever written to the artifact.
 - Each click/type gets the ranked locator candidates probed at record time.
-- Consecutive `type` after a `left_click` on the same probe collapse into one TYPE step with a
-  precondition on the field label (that is how a human would describe it).
-- Postconditions: URL change becomes a url_pattern; otherwise the next screenshot's title text.
-- Outputs declared by the caller get an EXTRACT step whose locator is derived from the finish() values
-  by text search at the end of the run.
+- click-then-type on the same control collapses into one TYPE step with the click's locator.
+- Postconditions come from the *state delta* the action caused: a URL that appears in any frame
+  after the action and was not there before, canonicalised (param values -> named groups). This
+  works for framesets, where the page URL never changes and only a frame navigates.
+- The last state-changing step inherits the success checkpoint so a failed final click is
+  attributed to that click, not to "success check".
+- The goal is templated: param values are replaced by {name} so no PII lands in the artifact.
 """
 
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 
-from cua.agent.loop import DiscoveryOutcome
+from cua.agent.loop import DiscoveryOutcome, RecordedAction
 from cua.artifact.schema import (
     ActionType,
     AppRef,
@@ -32,18 +36,37 @@ from cua.artifact.schema import (
     ParamType,
     Provenance,
     RiskClass,
+    SecretSpec,
     Sensitivity,
     Step,
     Transform,
 )
 
+_STATE_CHANGING = {
+    "left_click": ActionType.CLICK,
+    "double_click": ActionType.CLICK,
+    "type": ActionType.TYPE,
+    "key": ActionType.KEY,
+    "scroll": ActionType.SCROLL,
+}
+
 
 def _canon_url(url: str, params: dict[str, str]) -> str:
-    pat = re.escape(url)
+    """Regex for the path (+query) of a URL with parameter values turned into named groups."""
+    u = urlparse(url)
+    path = u.path + (f"?{u.query}" if u.query else "")
+    pat = re.escape(path)
     for k, v in sorted(params.items(), key=lambda kv: -len(kv[1])):
         if v:
             pat = pat.replace(re.escape(v), f"(?P<{k}>[^/?&]+)")
     return pat
+
+
+def _template(text: str, params: dict[str, str]) -> str:
+    for k, v in sorted(params.items(), key=lambda kv: -len(kv[1])):
+        if v:
+            text = text.replace(v, f"{{{k}}}")
+    return text
 
 
 class Recorder:
@@ -67,42 +90,27 @@ class Recorder:
         param_specs: dict[str, ParamSpec],
         output_specs: dict[str, tuple[ParamType, str]],
         output_locators: dict[str, Locator],
+        secrets: dict[str, str] | None = None,
         risk_class: RiskClass = RiskClass.SAFE,
         interrupts: list[Interrupt] | None = None,
         outcomes: list[Outcome] | None = None,
         success: Checkpoint | None = None,
     ) -> Capability:
+        secrets = secrets or {}
+        actions = [a for a in outcome.actions if a.ok and a.name in _STATE_CHANGING]
         steps: list[Step] = []
-        n = 0
-        for a in outcome.actions:
-            if not a.ok or a.name in {
-                "screenshot",
-                "zoom",
-                "cursor_position",
-                "mouse_move",
-                "wait",
-            }:
-                continue
-            n += 1
-            atype = {
-                "left_click": ActionType.CLICK,
-                "double_click": ActionType.CLICK,
-                "type": ActionType.TYPE,
-                "key": ActionType.KEY,
-                "scroll": ActionType.SCROLL,
-            }.get(a.name)
-            if atype is None:
-                n -= 1
-                continue
+        used_secrets: set[str] = set()
+        for i, a in enumerate(actions):
+            atype = _STATE_CHANGING[a.name]
             target = a.probe.to_locator() if a.probe else None
-            value = a.input.get("text")
+            value: str | None = a.input.get("text")
             if atype == ActionType.TYPE and value:
-                value = self._parameterise(value, params)
-                # attach the field's locator from the preceding click if this type has no probe
+                value, sec = self._parameterise(value, params, secrets)
+                if sec:
+                    used_secrets.add(sec)
                 if target is None:
                     prev = next(
-                        (s for s in reversed(steps) if s.action == ActionType.CLICK and s.target),
-                        None,
+                        (s for s in reversed(steps) if s.action == ActionType.CLICK and s.target), None
                     )
                     target = (
                         prev.target
@@ -116,28 +124,32 @@ class Recorder:
                     )
             if atype == ActionType.SCROLL:
                 target = None
-            post = None
-            if a.url_after and a.url_after != a.url_before:
-                post = Checkpoint(url_pattern=_canon_url(a.url_after, params), timeout_ms=10_000)
             steps.append(
                 Step(
-                    n=n,
+                    n=len(steps) + 1,
                     action=atype,
                     target=target,
-                    value=value or (a.input.get("text") if atype == ActionType.KEY else None),
-                    postcondition=post,
+                    value=value if atype in {ActionType.TYPE, ActionType.KEY} else None,
+                    postcondition=self._postcondition(
+                        a, actions[i + 1] if i + 1 < len(actions) else None, params
+                    ),
                     risk=RiskClass(a.risk),
-                    rationale=(a.rationale or "")[:200] or None,
+                    rationale=_template((a.rationale or "")[:200], params) or None,
                 )
             )
-        # merge click-then-type on the same field into a single TYPE with the click's locator
         steps = self._merge_click_type(steps)
-        # extraction steps for declared outputs
+
+        success_cp = success or Checkpoint(text_contains="Current Balance")
+        # the last state-changing step owns the success condition: a failure there is *its* failure
+        if steps and steps[-1].postcondition is None:
+            steps[-1] = steps[-1].model_copy(update={"postcondition": success_cp})
+
         outputs: dict[str, OutputSpec] = {}
         for oname, (otype, desc) in output_specs.items():
             loc = output_locators[oname]
-            n = len(steps) + 1
-            steps.append(Step(n=n, action=ActionType.EXTRACT, target=loc, rationale=f"extract {oname}"))
+            steps.append(
+                Step(n=len(steps) + 1, action=ActionType.EXTRACT, target=loc, rationale=f"extract {oname}")
+            )
             outputs[oname] = OutputSpec(
                 type=otype,
                 description=desc,
@@ -145,31 +157,54 @@ class Recorder:
                 transform=Transform.CURRENCY if otype == ParamType.DECIMAL else Transform.TRIM,
                 sensitivity=Sensitivity.PII if "balance" in oname else Sensitivity.NONE,
             )
-        cap = Capability(
+
+        return Capability(
             id=self.cap_id,
             version=self.version,
             name=self.name,
-            goal=goal,
+            goal=_template(goal, params),
             app=self.app,
             entry_url=entry_url,
             risk_class=risk_class,
             inputs=param_specs,
+            secrets={
+                k: SecretSpec(description=f"{k} used to sign in to the application")
+                for k in sorted(used_secrets)
+            },
             outputs=outputs,
             steps=steps,
             interrupts=interrupts or [],
             outcomes=outcomes or [],
-            success=success or Checkpoint(text_contains="Savings"),
+            success=success_cp,
             provenance=Provenance(discovery_run_id=self.run_id, model=self.model),
             idempotent=risk_class != RiskClass.IRREVERSIBLE,
         )
-        return cap
 
+    # --- helpers --------------------------------------------------------------------------------
     @staticmethod
-    def _parameterise(value: str, params: dict[str, str]) -> str:
+    def _parameterise(value: str, params: dict[str, str], secrets: dict[str, str]) -> tuple[str, str | None]:
+        for k, v in sorted(secrets.items(), key=lambda kv: -len(kv[1])):
+            if v and value == v:
+                return f"${{secrets.{k}}}", k
         for k, v in sorted(params.items(), key=lambda kv: -len(kv[1])):
             if v and value == v:
-                return f"${{inputs.{k}}}"
-        return value
+                return f"${{inputs.{k}}}", None
+        return value, None
+
+    @staticmethod
+    def _postcondition(
+        a: RecordedAction, nxt: RecordedAction | None, params: dict[str, str]
+    ) -> Checkpoint | None:
+        """New URL (in any frame) after the action = the state it produced."""
+        before = set(a.urls_before or [a.url_before])
+        after = a.urls_after or ([a.url_after] if a.url_after else [])
+        # the next action's starting state is the most settled view of this action's result
+        if nxt and nxt.urls_before:
+            after = list(nxt.urls_before)
+        new = [u for u in after if u and u not in before and not u.startswith("about:")]
+        if not new:
+            return None
+        return Checkpoint(url_pattern=_canon_url(new[-1], params), timeout_ms=10_000)
 
     @staticmethod
     def _merge_click_type(steps: list[Step]) -> list[Step]:
@@ -181,6 +216,7 @@ class Recorder:
                 and merged[-1].action == ActionType.CLICK
                 and merged[-1].target
                 and (s.target is None or s.target == merged[-1].target)
+                and merged[-1].postcondition is None
             ):
                 click = merged.pop()
                 s = s.model_copy(update={"target": click.target, "rationale": click.rationale or s.rationale})
@@ -197,9 +233,11 @@ DEFAULT_INTERRUPTS: list[Interrupt] = [
             description="Continue button",
             candidates=[
                 LocatorCandidate(
-                    strategy=LocatorStrategy.ROLE_NAME, value="button|Continue", confidence=0.95
+                    strategy=LocatorStrategy.ROLE_NAME, value="button|Continue", confidence=0.95, frame="main"
                 ),
-                LocatorCandidate(strategy=LocatorStrategy.TEXT, value="Continue", confidence=0.7),
+                LocatorCandidate(
+                    strategy=LocatorStrategy.TEXT, value="Continue", confidence=0.7, frame="main"
+                ),
             ],
         ),
     ),
@@ -230,3 +268,25 @@ DEFAULT_OUTCOMES: list[Outcome] = [
         description="Operator role lacks permission for this screen",
     ),
 ]
+
+
+def savings_locator() -> Locator:
+    """Extraction locator for the Savings balance cell. No literal values: label-anchored xpaths only."""
+    return Locator(
+        description="Savings 'Current Balance' cell",
+        candidates=[
+            LocatorCandidate(
+                strategy=LocatorStrategy.LABEL_RELATIVE,
+                value="xpath=//tr[td[normalize-space()='Savings']]/td[2]",
+                confidence=0.9,
+                frame="main",
+                note="row labelled Savings, second column",
+            ),
+            LocatorCandidate(
+                strategy=LocatorStrategy.LABEL_RELATIVE,
+                value="xpath=//td[normalize-space()='Savings']/following-sibling::td[1]",
+                confidence=0.8,
+                frame="main",
+            ),
+        ],
+    )

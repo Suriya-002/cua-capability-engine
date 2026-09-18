@@ -10,10 +10,23 @@ from cua.artifact.schema import Capability
 from cua.replay.engine import IdempotencyStore, ReplayEngine
 
 
-def test_substitute_params() -> None:
-    assert ReplayEngine._substitute("${inputs.member_id}", {"member_id": "10023"}) == "10023"
-    assert ReplayEngine._substitute("id=${inputs.a}/${inputs.b}", {"a": "1", "b": "2"}) == "id=1/2"
-    assert ReplayEngine._substitute(None, {}) is None
+def _engine(secrets: dict[str, str] | None = None) -> ReplayEngine:
+    from unittest.mock import MagicMock
+
+    from cua.policy.redaction import Redactor
+
+    return ReplayEngine(MagicMock(), MagicMock(), MagicMock(), Redactor(), secrets=secrets)
+
+
+def test_substitute_params_and_secrets() -> None:
+    e = _engine({"password": "s3cret"})
+    assert e._substitute("${inputs.member_id}", {"member_id": "10023"}) == "10023"
+    assert e._substitute("id=${inputs.a}/${inputs.b}", {"a": "1", "b": "2"}) == "id=1/2"
+    assert e._substitute("${secrets.password}", {}) == "s3cret"
+    assert e._substitute("${secrets.missing}", {}) == ""
+    assert e._substitute(None, {}) is None
+    # engine registers secrets with the redactor so they never reach evidence
+    assert e.redactor.redact("pw=s3cret") == "pw=[REDACTED]"
 
 
 def test_output_transforms(sample_capability: Capability) -> None:
