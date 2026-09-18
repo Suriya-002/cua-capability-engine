@@ -501,12 +501,21 @@ class ReplayEngine:
                 )
         self.session.resume_ok()
         self.ev.event("resumed", step=step.n, human_steps=len(req.human_steps))
+        # Three outcomes after a hand-back, in order of preference:
+        #  1. the human completed this step (its postcondition holds)  -> continue with the next step
+        #  2. the step's target is now resolvable                       -> rerun just this step
+        #  3. the screen is in some other state                         -> rerun the flow from step 1 (once);
+        #     the human cleared the blocking condition, so a clean pass is the safest way to a verified result
         if step.postcondition:
             ok, _ = await self._check(step.postcondition, quick=True)
             if ok:
                 self.ev.event("step_completed_by_human", step=step.n)
                 return None
-        return RERUN
+        if step.target and await self.s.resolve(step.target, 2000) is not None:
+            return RERUN
+        self.ev.event("restart_after_handoff", step=step.n, reason="state not verifiable; re-running flow")
+        await self.s.act(Action(name="navigate", url=self._entry_url))  # the flow starts at the entry page
+        return RESTART
 
     async def _snapshot(self) -> tuple[list[str], str]:
         return await self.s.all_urls(), await self.s.read_text()

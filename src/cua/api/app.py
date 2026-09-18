@@ -280,11 +280,13 @@ def requests_json() -> list[dict[str, Any]]:
             "operator": s.request.acquired_by if s.request else None,
             "reason": s.request.reason if s.request else None,
             "browser": s.request.context.get("browser") if s.request else None,
+            "url": s.request.context.get("url") if s.request else None,
             "step": s.request.step_n if s.request else None,
             "screenshot": s.request.screenshot_path if s.request else None,
             "human_steps": len(s.request.human_steps) if s.request else 0,
         }
         for rid, s in _active.items()
+        if s.request is not None and s.request.id == rid  # a session keeps only its current request visible
     ]
 
 
@@ -298,7 +300,7 @@ input{padding:4px} button{padding:4px 10px} .muted{color:#666} iframe{width:100%
 <h2>Intervention inbox</h2>
 <p><label>Operator name <input id="op" placeholder="your name" size="24"></label>
 <span class="muted">(list updates in the background every 3 s; nothing you type is lost)</span></p>
-<table><thead><tr><th>Request</th><th>Capability</th><th>Step</th><th>Reason</th><th>Browser</th><th>State</th><th>Operator</th><th>Action</th></tr></thead>
+<table><thead><tr><th>Request</th><th>Capability</th><th>Step</th><th>Reason</th><th>Engine browser</th><th>State</th><th>Operator</th><th>Action</th></tr></thead>
 <tbody id="rows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody></table>
 <h2>Live session</h2>
 <p class="muted">Hosted: the frame below is the same browser the engine is driving (noVNC). Local: use the automation
@@ -320,7 +322,7 @@ async function load() {
               : q.state === 'human' ? `<button onclick="act('${q.id}','release')">Hand back</button>` + abort
               : '<span class="muted">engine running</span>';
     return `<tr><td>${esc(q.id)}</td><td>${esc(q.capability)}</td><td>${esc(q.step)}</td><td>${esc(q.reason)}</td>
-            <td>${esc(q.browser ?? '')}</td><td class="${esc(q.state)}">${esc(q.state)}</td><td>${esc(q.operator ?? '')}</td><td>${btn}</td></tr>`;
+            <td>${esc(q.browser ?? '')}<br><small class="muted">${esc(q.url ?? '')}</small></td><td class="${esc(q.state)}">${esc(q.state)}</td><td>${esc(q.operator ?? '')}</td><td>${btn}</td></tr>`;
   }).join('');
 }
 async function act(id, verb) {

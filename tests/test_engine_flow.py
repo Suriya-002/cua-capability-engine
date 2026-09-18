@@ -56,6 +56,8 @@ class FakeSurface:
 
     async def resolve(self, locator: Locator, timeout_ms: int) -> Resolution | None:
         c = locator.candidates[0]
+        if c.value == "cell" and self.state != "member":
+            return None  # the Savings cell only exists on the member detail screen
         return Resolution(handle=c.value, candidate=c, candidate_index=0, text=c.value)
 
     async def read_text(self) -> str:
@@ -204,9 +206,10 @@ def test_hard_failure_unattended_has_debuggable_detail(tmp_path: Path) -> None:
     s = FakeSurface(SCREENS, {("search", "Search"): "error"}, "search")
     e, _ = engine(s, tmp_path)
     r = asyncio.run(e.run(cap_with([NOTICE]), {"member_id": "10023"}))
-    # url matched /bank/member/ so the postcondition passes; the success checkpoint text does not
-    assert r.kind == ResultKind.FAILURE and r.failure and r.failure.category == "checkpoint_failed"
-    assert "Current Balance" in r.failure.expected
+    # url matched /bank/member/ so step 1 passes; the extract step cannot find its target on the error page.
+    # The failure is attributed to THAT step, with what was looked for and the evidence captured there.
+    assert r.kind == ResultKind.FAILURE and r.failure and r.failure.category == "locator_not_found"
+    assert r.failure.step_n == 2 and "cell" in r.failure.observed and r.failure.evidence
 
 
 async def _attended_run(tmp_path: Path) -> tuple[Any, list[str]]:
@@ -239,3 +242,34 @@ def test_escalation_human_completes_step(tmp_path: Path) -> None:
     types = [__import__("json").loads(ln)["type"] for ln in lines]
     assert "intervention_request" in types and "human_step" in types and "step_completed_by_human" in types
     assert types.count("control_transition") == 5  # paused, human, resuming, automation, completed
+
+
+async def _attended_run_wrong_state(tmp_path: Path) -> Any:
+    # the member screen 500s (url matches, so step 1 passes); step 2 cannot find the Savings cell -> escalate.
+    # after the hand-back the app is healthy again, but the human left the screen on the search form
+    s = FakeSurface(SCREENS, {("search", "Search"): "error"}, "search")
+    ev = EvidenceWriter(tmp_path, "t", Redactor())
+    session = SessionController(ev, "c@1.0.0")
+    e = ReplayEngine(
+        s, Policy.load(POLICY), ev, Redactor(), session=session, unattended=False, escalation_wait_s=5
+    )
+
+    async def operator() -> None:
+        while session.request is None:
+            await asyncio.sleep(0.05)
+        session.acquire("tester")
+        s.transitions[("search", "Search")] = "member"  # the outage is over
+        s.state = "search"  # but the human handed back from the search screen
+        session.release("retried, app is back")
+
+    task = asyncio.create_task(operator())
+    r = await e.run(cap_with([]), {"member_id": "10023"})
+    await task
+    assert any(x.endswith(":navigate") for x in s.log), s.log
+    return r, (ev.dir / "events.jsonl").read_text()
+
+
+def test_handoff_in_unverifiable_state_restarts_flow(tmp_path: Path) -> None:
+    r, events = asyncio.run(_attended_run_wrong_state(tmp_path))
+    assert r.kind == ResultKind.SUCCESS and r.llm_calls == 0
+    assert "restart_after_handoff" in events
