@@ -19,7 +19,8 @@ from typing import Any
 PATTERNS: dict[str, re.Pattern[str]] = {
     "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
     "card": re.compile(r"\b(?:\d[ -]?){13,19}\b"),
-    "email": re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"),
+    # requires an alphabetic TLD so capability refs like name@1.0.0 are not mistaken for addresses
+    "email": re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b"),
     "bearer": re.compile(r"(?i)bearer\s+[a-z0-9._-]{16,}"),
     "anthropic_key": re.compile(r"sk-ant-[A-Za-z0-9_-]{10,}"),
 }

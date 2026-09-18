@@ -32,3 +32,9 @@ def test_leak_check_dir(tmp_path: Path) -> None:
 def test_short_literals_ignored() -> None:
     r = Redactor(["ab"])  # too short to be meaningful; must not nuke every 'ab'
     assert r.redact("abstract") == "abstract"
+
+
+def test_capability_ref_is_not_an_email() -> None:
+    r = Redactor()
+    assert r.redact("capability=lookup_member_balance@1.0.0") == "capability=lookup_member_balance@1.0.0"
+    assert "[REDACTED:email]" in r.redact("contact ops@bank.example")
