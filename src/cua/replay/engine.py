@@ -473,6 +473,7 @@ class ReplayEngine:
                 "title": obs.title,
                 "action": step.action.value,
                 "target": step.target.description if step.target else None,
+                "browser": "headless (no window!)" if getattr(self.s, "headless", True) else "headed window",
             },
         )
         self.ev.event("intervention_request", request_id=req.id, reason=reason, step=step.n)

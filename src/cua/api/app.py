@@ -129,6 +129,17 @@ async def invoke(cap_id: str, body: InvokeBody) -> JSONResponse:
         session = SessionController(ev, cap.ref) if body.attended else None
         if session:
             surface.install_human_recorder(lambda p: session.record_human_step(**p))
+        log.info(
+            "invoke",
+            capability=cap.ref,
+            attended=body.attended,
+            headed=not surface.headless,
+            run_id=ev.run_id,
+        )
+        print(
+            f"[engine] invoke {cap.ref} attended={body.attended} browser={'headed' if not surface.headless else 'headless'}",
+            flush=True,
+        )
         engine = ReplayEngine(
             surface,
             policy,
@@ -258,6 +269,7 @@ def requests_json() -> list[dict[str, Any]]:
             "capability": s.request.capability_ref if s.request else None,
             "operator": s.request.acquired_by if s.request else None,
             "reason": s.request.reason if s.request else None,
+            "browser": s.request.context.get("browser") if s.request else None,
             "step": s.request.step_n if s.request else None,
             "screenshot": s.request.screenshot_path if s.request else None,
             "human_steps": len(s.request.human_steps) if s.request else 0,
@@ -276,8 +288,8 @@ input{padding:4px} button{padding:4px 10px} .muted{color:#666} iframe{width:100%
 <h2>Intervention inbox</h2>
 <p><label>Operator name <input id="op" placeholder="your name" size="24"></label>
 <span class="muted">(list updates in the background every 3 s; nothing you type is lost)</span></p>
-<table><thead><tr><th>Request</th><th>Capability</th><th>Step</th><th>Reason</th><th>State</th><th>Operator</th><th>Action</th></tr></thead>
-<tbody id="rows"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody></table>
+<table><thead><tr><th>Request</th><th>Capability</th><th>Step</th><th>Reason</th><th>Browser</th><th>State</th><th>Operator</th><th>Action</th></tr></thead>
+<tbody id="rows"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody></table>
 <h2>Live session</h2>
 <p class="muted">Hosted: the frame below is the same browser the engine is driving (noVNC). Local: use the automation
 Chromium window on your desktop directly.</p>
@@ -291,13 +303,13 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 async function load() {
   let reqs = [];
   try { reqs = await (await fetch('/operator/requests')).json(); } catch (e) { return; }
-  if (!reqs.length) { rows.innerHTML = '<tr><td colspan="7" class="muted">No open intervention requests.</td></tr>'; return; }
+  if (!reqs.length) { rows.innerHTML = '<tr><td colspan="8" class="muted">No open intervention requests.</td></tr>'; return; }
   rows.innerHTML = reqs.map(q => {
     const btn = q.state === 'paused' ? `<button onclick="act('${q.id}','acquire')">Take control</button>`
               : q.state === 'human' ? `<button onclick="act('${q.id}','release')">Hand back</button>`
               : '<span class="muted">engine running</span>';
     return `<tr><td>${esc(q.id)}</td><td>${esc(q.capability)}</td><td>${esc(q.step)}</td><td>${esc(q.reason)}</td>
-            <td class="${esc(q.state)}">${esc(q.state)}</td><td>${esc(q.operator ?? '')}</td><td>${btn}</td></tr>`;
+            <td>${esc(q.browser ?? '')}</td><td class="${esc(q.state)}">${esc(q.state)}</td><td>${esc(q.operator ?? '')}</td><td>${btn}</td></tr>`;
   }).join('');
 }
 async function act(id, verb) {

@@ -86,6 +86,10 @@ class PlaywrightSurface:
         self._scale = 1.0
         self._human_cb: Any = None
 
+    @property
+    def headless(self) -> bool:
+        return self._headless
+
     # --- lifecycle --------------------------------------------------------------------------
     async def start(self, entry_url: str | None = None) -> None:
         self._pw = await async_playwright().start()
