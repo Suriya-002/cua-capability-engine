@@ -227,16 +227,17 @@ class ReplayEngine:
                 "aborted",
                 time.monotonic(),
             )
-        # 1) interrupts
+        # 1) interrupts (one state snapshot serves every quick detector in this step)
+        snap = await self._snapshot()
         for intr in cap.interrupts:
-            hit, _ = await self._check(intr.detect, quick=True)
+            hit = self._matches(intr.detect, snap)
             if hit:
                 recovered = await self._handle_interrupt(intr, step, res)
                 if not recovered:
                     return await self._escalate_or_fail(res, step, f"unrecoverable interrupt '{intr.id}'")
         # 2) business outcomes
         for oc in cap.outcomes:
-            hit, _ = await self._check(oc.detect, quick=True)
+            hit = self._matches(oc.detect, snap)
             if hit:
                 res.kind, res.outcome_code = ResultKind.BUSINESS_OUTCOME, oc.code
                 self.ev.event("business_outcome", step=step.n, code=oc.code)
@@ -443,6 +444,21 @@ class ReplayEngine:
         self.session.resume_ok()
         self.ev.event("resumed", step=step.n)
         return None  # caller re-runs the step
+
+    async def _snapshot(self) -> tuple[list[str], str]:
+        return await self.s.all_urls(), await self.s.read_text()
+
+    @staticmethod
+    def _matches(cp: Checkpoint, snap: tuple[list[str], str]) -> bool:
+        """Text/URL-only evaluation against a snapshot (locator checkpoints use _check)."""
+        urls, text = snap
+        if cp.url_pattern and not any(re.search(cp.url_pattern, u) for u in urls):
+            return False
+        if cp.text_contains and cp.text_contains not in text:
+            return False
+        if cp.text_absent and cp.text_absent in text:
+            return False
+        return cp.locator is None
 
     async def _check(self, cp: Checkpoint, *, quick: bool = False) -> tuple[bool, str]:
         deadline = time.monotonic() + (0.3 if quick else cp.timeout_ms / 1000)

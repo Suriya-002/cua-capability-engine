@@ -106,7 +106,7 @@ async def run_discovery(
     sens = {k: ("pii" if k == "member_id" else "none") for k in params}
     try:
         outcome = await agent.run(goal, entry, params, sens, secrets)
-        fp = await surface.fingerprint()
+        fp = outcome.entry_fingerprint
     finally:
         await surface.stop()
 

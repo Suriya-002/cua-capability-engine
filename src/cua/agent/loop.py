@@ -80,6 +80,7 @@ class DiscoveryOutcome:
     duration_ms: int = 0
     actions: list[RecordedAction] = field(default_factory=list)
     stop_reason: str = "finished"
+    entry_fingerprint: str = ""
 
 
 _MEMBER_TO_ACTIONTYPE = {
@@ -126,6 +127,7 @@ class DiscoveryAgent:
     ) -> DiscoveryOutcome:
         t0 = time.monotonic()
         await self.surface.start(entry_url)
+        entry_fp = await self.surface.fingerprint()  # canonical point: the entry page, same as replay
         self.ev.event(
             "discovery_start", goal=goal, entry_url=entry_url, model=self.model, params=list(params)
         )
@@ -151,7 +153,7 @@ class DiscoveryAgent:
             {"type": "computer_toolset_20260801", "cache_control": {"type": "ephemeral"}},
             FINISH_TOOL,
         ]
-        out = DiscoveryOutcome(status="stuck", summary="")
+        out = DiscoveryOutcome(status="stuck", summary="", entry_fingerprint=entry_fp)
         for turn in range(1, self.max_steps + 1):
             if time.monotonic() - t0 > self.timeout_s:
                 out.stop_reason = "timeout"

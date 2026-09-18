@@ -145,12 +145,15 @@ class PlaywrightSurface:
         return xy[0] / self._scale, xy[1] / self._scale
 
     async def read_text(self) -> str:
+        """Visible text of every frame. Uses evaluate() so a frameset document (no <body>) costs nothing."""
         assert self.page
         parts: list[str] = []
         for fr in self.page.frames:
             try:
-                parts.append(await fr.locator("body").inner_text(timeout=1500))
-            except Exception:
+                txt = await fr.evaluate("() => document.body ? document.body.innerText : ''")
+                if txt:
+                    parts.append(str(txt))
+            except Exception:  # detached or navigating frame
                 continue
         return "\n".join(parts)
 

@@ -100,6 +100,7 @@ class Recorder:
         actions = [a for a in outcome.actions if a.ok and a.name in _STATE_CHANGING]
         steps: list[Step] = []
         used_secrets: set[str] = set()
+        last_post: str | None = None
         for i, a in enumerate(actions):
             atype = _STATE_CHANGING[a.name]
             target = a.probe.to_locator() if a.probe else None
@@ -124,6 +125,11 @@ class Recorder:
                     )
             if atype == ActionType.SCROLL:
                 target = None
+            post = self._postcondition(a, actions[i + 1] if i + 1 < len(actions) else None, params)
+            if post and post.url_pattern == last_post:
+                post = None  # same state as the previous step: nothing changed, nothing to assert
+            elif post:
+                last_post = post.url_pattern
             steps.append(
                 Step(
                     n=len(steps) + 1,

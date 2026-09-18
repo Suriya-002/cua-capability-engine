@@ -1,0 +1,405 @@
+{
+  "schema_version": "1.0",
+  "id": "lookup_member_balance",
+  "version": "1.0.0",
+  "name": "Lookup Member Balance",
+  "goal": "Look up member {member_id} and read their savings balance",
+  "app": {
+    "vendor": "LegacyCU",
+    "product": "Core Servicing",
+    "version_fingerprint": "bb2261812ae8408a"
+  },
+  "entry_url": "http://localhost:7860/bank/login",
+  "risk_class": "safe",
+  "inputs": {
+    "member_id": {
+      "type": "string",
+      "description": "member id",
+      "required": true,
+      "pattern": "\\d{5}",
+      "sensitivity": "pii",
+      "example": "10023"
+    }
+  },
+  "secrets": {
+    "password": {
+      "description": "password used to sign in to the application"
+    },
+    "username": {
+      "description": "username used to sign in to the application"
+    }
+  },
+  "outputs": {
+    "savings_balance": {
+      "type": "decimal",
+      "description": "savings balance as shown on the member detail screen",
+      "extract": {
+        "description": "Savings 'Current Balance' cell",
+        "candidates": [
+          {
+            "strategy": "label_relative",
+            "value": "xpath=//tr[td[normalize-space()='Savings']]/td[2]",
+            "confidence": 0.9,
+            "frame": "main",
+            "note": "row labelled Savings, second column"
+          },
+          {
+            "strategy": "label_relative",
+            "value": "xpath=//td[normalize-space()='Savings']/following-sibling::td[1]",
+            "confidence": 0.8,
+            "frame": "main"
+          }
+        ]
+      },
+      "transform": "currency",
+      "sensitivity": "pii"
+    }
+  },
+  "steps": [
+    {
+      "n": 1,
+      "action": "type",
+      "target": {
+        "description": "textbox 'User'",
+        "candidates": [
+          {
+            "strategy": "label_relative",
+            "value": "User",
+            "confidence": 0.9
+          },
+          {
+            "strategy": "css_structural",
+            "value": "[name=\"username\"]",
+            "confidence": 0.85,
+            "note": "form field name - stable in server-rendered apps"
+          },
+          {
+            "strategy": "css_structural",
+            "value": "tr > td > form > table > tbody > tr:nth-of-type(1) > td:nth-of-type(2) > input",
+            "confidence": 0.5
+          },
+          {
+            "strategy": "coords",
+            "value": "184,94",
+            "confidence": 0.2,
+            "note": "viewport-dependent fallback"
+          }
+        ]
+      },
+      "value": "${secrets.username}",
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "rationale": "I will log in with the provided credentials."
+    },
+    {
+      "n": 2,
+      "action": "type",
+      "target": {
+        "description": "textbox 'Password'",
+        "candidates": [
+          {
+            "strategy": "label_relative",
+            "value": "Password",
+            "confidence": 0.9
+          },
+          {
+            "strategy": "css_structural",
+            "value": "[name=\"password\"]",
+            "confidence": 0.85,
+            "note": "form field name - stable in server-rendered apps"
+          },
+          {
+            "strategy": "css_structural",
+            "value": "tr > td > form > table > tbody > tr:nth-of-type(2) > td:nth-of-type(2) > input",
+            "confidence": 0.5
+          },
+          {
+            "strategy": "coords",
+            "value": "184,122",
+            "confidence": 0.2,
+            "note": "viewport-dependent fallback"
+          }
+        ]
+      },
+      "value": "${secrets.password}",
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "rationale": "I will log in with the provided credentials."
+    },
+    {
+      "n": 3,
+      "action": "click",
+      "target": {
+        "description": "button 'Sign In'",
+        "candidates": [
+          {
+            "strategy": "role_name",
+            "value": "button|Sign In",
+            "confidence": 0.95
+          },
+          {
+            "strategy": "text",
+            "value": "Sign In",
+            "confidence": 0.75
+          },
+          {
+            "strategy": "css_structural",
+            "value": "tr > td > form > table > tbody > tr:nth-of-type(3) > td:nth-of-type(2) > input",
+            "confidence": 0.5
+          },
+          {
+            "strategy": "coords",
+            "value": "138,151",
+            "confidence": 0.2,
+            "note": "viewport-dependent fallback"
+          }
+        ]
+      },
+      "postcondition": {
+        "url_pattern": "/bank/search",
+        "timeout_ms": 10000
+      },
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "rationale": "I will log in with the provided credentials."
+    },
+    {
+      "n": 4,
+      "action": "click",
+      "target": {
+        "description": "textbox 'Member ID'",
+        "candidates": [
+          {
+            "strategy": "label_relative",
+            "value": "Member ID",
+            "confidence": 0.9,
+            "frame": "main"
+          },
+          {
+            "strategy": "css_structural",
+            "value": "[name=\"member_id\"]",
+            "confidence": 0.85,
+            "frame": "main",
+            "note": "form field name - stable in server-rendered apps"
+          },
+          {
+            "strategy": "css_structural",
+            "value": "tr > td > form > table > tbody > tr:nth-of-type(1) > td:nth-of-type(2) > input",
+            "confidence": 0.5,
+            "frame": "main"
+          },
+          {
+            "strategy": "coords",
+            "value": "360,94",
+            "confidence": 0.2,
+            "frame": "main",
+            "note": "viewport-dependent fallback"
+          }
+        ]
+      },
+      "postcondition": {
+        "url_pattern": "/bank/search",
+        "timeout_ms": 10000
+      },
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "rationale": "Logged in successfully. Now I'll search for member {member_id}."
+    },
+    {
+      "n": 5,
+      "action": "type",
+      "target": {
+        "description": "textbox 'Member ID'",
+        "candidates": [
+          {
+            "strategy": "label_relative",
+            "value": "Member ID",
+            "confidence": 0.9,
+            "frame": "main"
+          },
+          {
+            "strategy": "css_structural",
+            "value": "[name=\"member_id\"]",
+            "confidence": 0.85,
+            "frame": "main",
+            "note": "form field name - stable in server-rendered apps"
+          },
+          {
+            "strategy": "css_structural",
+            "value": "tr > td > form > table > tbody > tr:nth-of-type(1) > td:nth-of-type(2) > input",
+            "confidence": 0.5,
+            "frame": "main"
+          },
+          {
+            "strategy": "coords",
+            "value": "360,94",
+            "confidence": 0.2,
+            "frame": "main",
+            "note": "viewport-dependent fallback"
+          }
+        ]
+      },
+      "value": "${inputs.member_id}",
+      "postcondition": {
+        "url_pattern": "/bank/search",
+        "timeout_ms": 10000
+      },
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "rationale": "Logged in successfully. Now I'll search for member {member_id}."
+    },
+    {
+      "n": 6,
+      "action": "click",
+      "target": {
+        "description": "button 'Search'",
+        "candidates": [
+          {
+            "strategy": "role_name",
+            "value": "button|Search",
+            "confidence": 0.95,
+            "frame": "main"
+          },
+          {
+            "strategy": "text",
+            "value": "Search",
+            "confidence": 0.75,
+            "frame": "main"
+          },
+          {
+            "strategy": "css_structural",
+            "value": "tr > td > form > table > tbody > tr:nth-of-type(2) > td:nth-of-type(2) > input",
+            "confidence": 0.5,
+            "frame": "main"
+          },
+          {
+            "strategy": "coords",
+            "value": "339,122",
+            "confidence": 0.2,
+            "frame": "main",
+            "note": "viewport-dependent fallback"
+          }
+        ]
+      },
+      "postcondition": {
+        "url_pattern": "/bank/member/(?P<member_id>[^/?&]+)",
+        "timeout_ms": 10000
+      },
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "rationale": "Logged in successfully. Now I'll search for member {member_id}."
+    },
+    {
+      "n": 7,
+      "action": "extract",
+      "target": {
+        "description": "Savings 'Current Balance' cell",
+        "candidates": [
+          {
+            "strategy": "label_relative",
+            "value": "xpath=//tr[td[normalize-space()='Savings']]/td[2]",
+            "confidence": 0.9,
+            "frame": "main",
+            "note": "row labelled Savings, second column"
+          },
+          {
+            "strategy": "label_relative",
+            "value": "xpath=//td[normalize-space()='Savings']/following-sibling::td[1]",
+            "confidence": 0.8,
+            "frame": "main"
+          }
+        ]
+      },
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "rationale": "extract savings_balance"
+    }
+  ],
+  "interrupts": [
+    {
+      "id": "notice_interstitial",
+      "detect": {
+        "text_contains": "System Notice",
+        "timeout_ms": 10000
+      },
+      "handler": "dismiss",
+      "action_target": {
+        "description": "Continue button",
+        "candidates": [
+          {
+            "strategy": "role_name",
+            "value": "button|Continue",
+            "confidence": 0.95,
+            "frame": "main"
+          },
+          {
+            "strategy": "text",
+            "value": "Continue",
+            "confidence": 0.7,
+            "frame": "main"
+          }
+        ]
+      },
+      "max_attempts": 2,
+      "wait_ms": 1500
+    },
+    {
+      "id": "session_expired",
+      "detect": {
+        "text_contains": "Session expired",
+        "timeout_ms": 10000
+      },
+      "handler": "relogin",
+      "max_attempts": 1,
+      "wait_ms": 1500
+    },
+    {
+      "id": "slow_load",
+      "detect": {
+        "text_contains": "Loading",
+        "timeout_ms": 10000
+      },
+      "handler": "retry",
+      "max_attempts": 3,
+      "wait_ms": 2000
+    }
+  ],
+  "outcomes": [
+    {
+      "code": "MEMBER_NOT_FOUND",
+      "detect": {
+        "text_contains": "No member matches",
+        "timeout_ms": 10000
+      },
+      "description": "The member ID does not exist; a legitimate answer, not an error",
+      "terminal": true
+    },
+    {
+      "code": "PERMISSION_DENIED",
+      "detect": {
+        "text_contains": "not authorized",
+        "timeout_ms": 10000
+      },
+      "description": "Operator role lacks permission for this screen",
+      "terminal": true
+    }
+  ],
+  "success": {
+    "url_pattern": "/bank/member/",
+    "text_contains": "Current Balance",
+    "timeout_ms": 10000
+  },
+  "tenant_overrides": {},
+  "approval": "approved",
+  "stability": {
+    "runs": 0,
+    "successes": 0
+  },
+  "provenance": {
+    "discovery_run_id": "20260918T022923-721987",
+    "model": "claude-sonnet-5",
+    "created_at": "2026-09-18T02:29:40.031869Z",
+    "author": "cua-discovery"
+  },
+  "idempotent": true
+}
