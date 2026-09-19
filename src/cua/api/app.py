@@ -64,7 +64,9 @@ class InvokeBody(BaseModel):
 
 @app.get("/", include_in_schema=False)
 def root(request: Request) -> HTMLResponse:
-    base = str(request.base_url).rstrip("/")
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.headers.get("host", request.url.netloc))
+    base = f"{proto}://{host}"
     return HTMLResponse(HOME_HTML.replace("{{base}}", base))
 
 
