@@ -12,14 +12,17 @@ param(
 $ErrorActionPreference = "Stop"
 az group create -n $Rg -l $Loc | Out-Null
 az containerapp env create -n $Env -g $Rg -l $Loc | Out-Null
-$exists = az containerapp show -n $App -g $Rg 2>$null
+$ErrorActionPreference = "Continue"
+$exists = az containerapp show -n $App -g $Rg --query name -o tsv 2>$null
+$ErrorActionPreference = "Stop"
 if (-not $exists) {
   az containerapp create -n $App -g $Rg --environment $Env --image $Image `
     --target-port 7860 --ingress external --transport auto `
     --cpu 1.0 --memory 2.0Gi --min-replicas 0 --max-replicas 1 `
     --secrets "anthropic-key=$AnthropicKey" "discovery-token=$DiscoveryToken" `
     --env-vars "ANTHROPIC_API_KEY=secretref:anthropic-key" "CUA_DISCOVERY_TOKEN=secretref:discovery-token" `
-               "CUA_HEADLESS=false" "CUA_MODEL=claude-sonnet-5"
+               "CUA_HEADLESS=false" "CUA_MODEL=claude-sonnet-5" `
+               "CUA_SECRET_USERNAME=svc_automation_7f3" "CUA_SECRET_PASSWORD=Lcu-demo-9x2Q"
 } else {
   az containerapp update -n $App -g $Rg --image $Image
 }

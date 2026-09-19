@@ -16,6 +16,14 @@ pytestmark = pytest.mark.live
 ARTIFACTS = Path("evidence/capabilities")
 
 
+@pytest.fixture(autouse=True)
+def _evidence_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test runs must not add folders to the committed evidence."""
+    from cua.config import settings
+
+    monkeypatch.setattr(settings, "evidence_dir", tmp_path)
+
+
 def _artifact():  # type: ignore[no-untyped-def]
     caps = ArtifactStore(ARTIFACTS).list() if ARTIFACTS.exists() else []
     if not caps:

@@ -2,6 +2,9 @@
 
 > The model discovers. The artifact becomes a reusable capability. Deterministic replay is how the agent invokes it.
 
+**Live demo:** https://cua-demo.greenground-c99e6748.eastus.azurecontainerapps.io — mock bank at `/bank/login`, catalog at `/capabilities`,
+operator inbox + noVNC at `/operator` (cold start ≈ 30–60 s; scale-to-zero on Azure Container Apps' free grant)
+
 **Discovery:** 3 turns · 3 API calls · 11,395 / 531 tokens · 15 s · ≈ $0.14 &nbsp;|&nbsp; **Replay:** ~4 s · $0.00 · 0 LLM calls · 10/10 stable &nbsp;|&nbsp; **Escalation:** human took the live session, 4 recorded actions, run completed
 
 An LLM drives a legacy back-office app once (screenshots + coordinates, no DOM assumed), the run is recorded as a

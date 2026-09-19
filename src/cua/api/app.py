@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from cua.artifact.store import ArtifactStore
@@ -60,6 +60,11 @@ class InvokeBody(BaseModel):
     dry_run: bool = False
     attended: bool = Field(False, description="If true, the engine may pause for a human instead of failing")
     fault: str | None = Field(None, description="Mock-bank fault to inject via the entry URL (demo only)")
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse("/bank/login")
 
 
 @app.get("/health")

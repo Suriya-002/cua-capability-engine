@@ -20,6 +20,7 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 COPY mockbank ./mockbank
 COPY policies ./policies
+COPY evidence/capabilities ./evidence/capabilities
 RUN pip install -e . && playwright install chromium
 
 COPY deploy/supervisord.conf /etc/supervisor/conf.d/cua.conf

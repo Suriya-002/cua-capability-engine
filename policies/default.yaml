@@ -3,7 +3,7 @@ name: mockbank-default
 allowed_hosts:
   - localhost
   - 127.0.0.1
-  - cua-demo.azurecontainerapps.io   # replace with the real FQDN after deploy
+  - cua-demo.greenground-c99e6748.eastus.azurecontainerapps.io
 allowed_path_patterns:
   - ^/bank(/|$)
 denied_path_patterns:
