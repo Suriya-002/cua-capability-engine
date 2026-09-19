@@ -10,6 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       xvfb x11vnc novnc websockify nginx supervisor fluxbox \
     && rm -rf /var/lib/apt/lists/*
 
+# Install into a venv: the base image's system Python has Debian-managed packages pip cannot replace.
+# The venv's Playwright is pinned to the same version as the base image, whose browsers live in /ms-playwright.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright PATH="/opt/venv/bin:$PATH"
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install --upgrade pip
+
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
