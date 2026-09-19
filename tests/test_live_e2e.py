@@ -1,50 +1,34 @@
-"""Live tests: need `playwright install chromium`. Marked `live`; CI runs them in the browser job."""
+"""Live tests: need `playwright install chromium` and the recorded artifact under evidence/capabilities.
+Marked `live`; CI runs them in the browser job. The engine's own auto-start brings up the local mock bank + API."""
 
 from __future__ import annotations
 
 import asyncio
 import os
-import socket
-import threading
 from pathlib import Path
 
 import pytest
-import uvicorn
 
 from cua.artifact.store import ArtifactStore
 from cua.cli import run_replay
 
 pytestmark = pytest.mark.live
+ARTIFACTS = Path("evidence/capabilities")
 
 
-@pytest.fixture(scope="module")
-def server() -> str:
-    from mockbank.app import app
-
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    cfg = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
-    srv = uvicorn.Server(cfg)
-    t = threading.Thread(target=srv.run, daemon=True)
-    t.start()
-    import time
-
-    time.sleep(0.8)
-    yield f"http://127.0.0.1:{port}"
-    srv.should_exit = True
+def _artifact():  # type: ignore[no-untyped-def]
+    caps = ArtifactStore(ARTIFACTS).list() if ARTIFACTS.exists() else []
+    if not caps:
+        pytest.skip("no recorded artifact yet")
+    return caps[0]
 
 
-@pytest.mark.skipif(not Path("evidence/capabilities").exists(), reason="no recorded artifact yet")
-def test_replay_not_found_is_business_outcome(server: str) -> None:
-    cap = next(iter(ArtifactStore(Path("evidence/capabilities")).list()))
-    cap = cap.model_copy(update={"entry_url": cap.entry_url.replace("localhost:7860", server.split("//")[1])})
-    res = asyncio.run(
+def _replay(member_id: str, fault: str | None):  # type: ignore[no-untyped-def]
+    return asyncio.run(
         run_replay(
-            cap,
-            {"member_id": "99999"},
-            fault="not_found",
+            _artifact(),
+            {"member_id": member_id},
+            fault=fault,
             tenant=None,
             attended=False,
             idempotency_key=None,
@@ -52,19 +36,39 @@ def test_replay_not_found_is_business_outcome(server: str) -> None:
             dry_run=False,
         )
     )
+
+
+def test_replay_success_returns_typed_output() -> None:
+    res = _replay("10041", None)
+    assert res.kind.value == "success" and res.llm_calls == 0
+    assert res.outputs["savings_balance"].replace(".", "").isdigit()
+
+
+def test_replay_not_found_is_business_outcome() -> None:
+    res = _replay("99999", "not_found")
     assert (
         res.kind.value == "business_outcome" and res.outcome_code == "MEMBER_NOT_FOUND" and res.llm_calls == 0
     )
 
 
+def test_replay_recovers_from_interstitial() -> None:
+    res = _replay("10041", "interstitial")
+    assert res.kind.value == "success" and [r.interrupt_id for r in res.recoveries] == ["notice_interstitial"]
+
+
+def test_replay_restarts_after_session_expiry() -> None:
+    res = _replay("10041", "session_expired")
+    assert res.kind.value == "success" and [r.interrupt_id for r in res.recoveries] == ["session_expired"]
+
+
 @pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="discovery needs a real key")
-def test_discovery_smoke(server: str) -> None:
+def test_discovery_smoke() -> None:
     from cua.cli import run_discovery
 
     _path, out = asyncio.run(
         run_discovery(
             "Look up member 10023 and read their savings balance",
-            f"{server}/bank/login",
+            "http://localhost:7860/bank/login",
             "lookup_member_balance",
             {"member_id": "10023"},
         )

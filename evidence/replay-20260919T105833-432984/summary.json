@@ -1,0 +1,23 @@
+{
+  "run_id": "20260919T105833-432984",
+  "kind": "replay",
+  "started_at": "2026-09-19T10:58:33.857552+00:00",
+  "finished_at": "2026-09-19T10:58:36.743695+00:00",
+  "duration_ms": 2886,
+  "events": 13,
+  "final_hash": "b3f80a6615dc3c6d446bff9712eb7900f96245e982330ebfa3e1deb0782507e5",
+  "result": {
+    "kind": "business_outcome",
+    "capability_ref": "lookup_member_balance@1.0.0",
+    "run_id": "20260919T105833-432984",
+    "outputs": {},
+    "outcome_code": "MEMBER_NOT_FOUND",
+    "failure": null,
+    "recoveries": [],
+    "drift_proposals": [],
+    "steps_completed": 4,
+    "duration_ms": 2890,
+    "finished_at": "2026-09-19T10:58:33.861958Z",
+    "llm_calls": 0
+  }
+}
