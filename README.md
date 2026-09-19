@@ -71,6 +71,8 @@ Via HTTP (what an AI agent would call): `GET /capabilities`, `GET /capabilities/
 
 ## Architecture
 
+![Architecture](docs/architecture.svg)
+
 ```
 goal ─► agent/loop.py (Claude, computer_toolset_20260801) ─► surface/ (Playwright; pixels in, DOM probe at record)
                     │ every action gated by policy/ and logged to evidence/

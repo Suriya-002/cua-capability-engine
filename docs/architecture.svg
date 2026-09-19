@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="DejaVu Sans, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+    <marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/></marker>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b45309"/></marker>
+    <style>
+      .title{fill:#0f172a;font-size:22px;font-weight:700}.sub{fill:#64748b;font-size:13px}
+      .h{fill:#0f172a;font-size:15px;font-weight:700}.s{fill:#64748b;font-size:11.2px}.m{font-family:DejaVu Sans Mono,Consolas,Menlo,monospace;font-size:10.8px;fill:#475569}
+      .lab{fill:#475569;font-size:11.5px}.labT{fill:#0f766e;font-size:11.5px;font-weight:700}.labA{fill:#b45309;font-size:11.5px;font-weight:700}
+      .card{fill:#ffffff;stroke:#d5dbe3;stroke-width:1.5;rx:12}
+      .layer{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1.5;rx:10}
+      .pipe{fill:#ffffff;stroke:#0f766e;stroke-width:1.8;rx:12}
+      .grey{fill:none;stroke:#64748b;stroke-width:1.8}.teal{fill:none;stroke:#0f766e;stroke-width:2.4}.amber{fill:none;stroke:#b45309;stroke-width:2.4;stroke-dasharray:7 5}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="#f3f5f8"/>
+
+  <text x="60" y="52" class="title">CUA Capability Engine</text>
+  <text x="60" y="76" class="sub">The model discovers once · the artifact is the capability · deterministic replay is how an agent invokes it · a human takes over the same live browser when it cannot proceed safely</text>
+
+  <!-- ===== External providers (top) ===== -->
+  <rect x="120" y="108" width="230" height="58" class="card"/>
+  <text x="138" y="132" class="h">Anthropic API</text>
+  <text x="138" y="152" class="s">Claude · computer_toolset_20260801</text>
+
+  <rect x="780" y="108" width="240" height="58" class="card"/>
+  <text x="798" y="132" class="h">GitHub · Actions · ghcr.io</text>
+  <text x="798" y="152" class="s">lint · types · 51 tests · image build</text>
+
+  <!-- ===== Azure boundary ===== -->
+  <rect x="60" y="206" width="1000" height="640" rx="18" fill="#eaf1ff" stroke="#3b82f6" stroke-width="2" stroke-dasharray="9 6"/>
+  <text x="84" y="234" class="h" fill="#1d4ed8">Azure Container Apps · Consumption</text>
+  <text x="84" y="252" class="s">1 vCPU / 2 GiB · min 0 · max 1 · scale-to-zero · image pulled from ghcr.io</text>
+
+  <!-- container -->
+  <rect x="84" y="270" width="952" height="552" rx="14" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+
+  <!-- nginx: the single public port, drawn as the container's right edge -->
+  <rect x="986" y="288" width="34" height="516" rx="8" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text transform="translate(1008,546) rotate(-90)" text-anchor="middle" class="m" fill="#334155">nginx :7860 — the single public port</text>
+
+  <!-- ===== Pipeline row ===== -->
+  <text x="104" y="306" class="s" font-weight="700" fill="#0f766e">THE THROUGH-LINE</text>
+
+  <rect x="104" y="318" width="202" height="92" class="pipe"/>
+  <text x="120" y="344" class="h">Discovery agent</text>
+  <text x="120" y="364" class="s">Claude drives the UI from pixels</text>
+  <text x="120" y="380" class="s">DOM probe → ranked locators</text>
+  <text x="120" y="398" class="m">record time · token-gated</text>
+
+  <rect x="322" y="318" width="202" height="92" class="pipe"/>
+  <text x="338" y="344" class="h">Capability artifact</text>
+  <text x="338" y="364" class="s">typed inputs · outputs · secret refs</text>
+  <text x="338" y="380" class="s">steps + checks · outcomes</text>
+  <text x="338" y="398" class="m">versioned · approved</text>
+
+  <rect x="540" y="318" width="202" height="92" class="pipe"/>
+  <text x="556" y="344" class="h">Replay engine</text>
+  <text x="556" y="364" class="s">locator cascade · state waits</text>
+  <text x="556" y="380" class="s">interrupts handled · drift flagged</text>
+  <text x="556" y="398" class="m">no LLM · production path</text>
+
+  <rect x="758" y="318" width="196" height="92" class="pipe"/>
+  <text x="774" y="344" class="h">Result</text>
+  <text x="774" y="364" class="m">success · outputs</text>
+  <text x="774" y="380" class="m">business_outcome · code</text>
+  <text x="774" y="398" class="m">failure · step + evidence</text>
+
+  <path d="M306,364 L322,364" class="grey" marker-end="url(#g)"/>
+  <path d="M524,364 L540,364" class="teal" marker-end="url(#t)"/>
+  <path d="M742,364 L758,364" class="teal" marker-end="url(#t)"/>
+
+  <!-- ===== Layers ===== -->
+  <rect x="104" y="440" width="850" height="60" class="layer"/>
+  <text x="120" y="463" class="h" font-size="13.5">Guardrails</text>
+  <text x="120" y="484" class="s">allowlist (hosts · paths · actions) · risk classes safe / risky / irreversible · idempotency keys · redaction before persistence · hash-chained evidence</text>
+
+  <rect x="104" y="516" width="850" height="60" class="layer"/>
+  <text x="120" y="539" class="h" font-size="13.5">Session controller</text>
+  <text x="120" y="560" class="m">AUTOMATION → PAUSED → HUMAN → RESUMING → AUTOMATION  ·  one controller at a time · human steps recorded · re-verify on hand-back</text>
+
+  <rect x="104" y="592" width="850" height="60" class="layer"/>
+  <text x="120" y="615" class="h" font-size="13.5">Surface — Playwright</text>
+  <text x="120" y="636" class="s">screenshot in · click / type out · probe a point → locator candidates · frameset-aware · the seam: swap for UI Automation</text>
+
+  <rect x="104" y="668" width="850" height="60" class="layer"/>
+  <text x="120" y="691" class="h" font-size="13.5">One live browser</text>
+  <text x="120" y="712" class="s">Chromium on Xvfb :99 · driven by the engine · shared with the human via x11vnc → noVNC :6080 · state survives the handoff</text>
+
+  <rect x="104" y="744" width="850" height="60" class="layer" stroke-dasharray="5 4"/>
+  <text x="120" y="767" class="h" font-size="13.5">Target: LegacyCU mock core-banking app</text>
+  <text x="120" y="788" class="s">framesets · table layouts · no ids · cookie sessions · injectable faults (not_found · interstitial · session_expired · error_500) · production: the real app</text>
+
+  <!-- ===== Callers (right) ===== -->
+  <rect x="1200" y="330" width="250" height="68" class="card"/>
+  <text x="1218" y="356" class="h">AI agent (caller)</text>
+  <text x="1218" y="378" class="m">POST /capabilities/{id}/invoke</text>
+
+  <rect x="1200" y="664" width="250" height="68" class="card"/>
+  <text x="1218" y="690" class="h">Human operator</text>
+  <text x="1218" y="712" class="m">/operator inbox · /session/ noVNC</text>
+
+  <!-- numbers -->
+  <rect x="1200" y="440" width="250" height="180" class="card"/>
+  <text x="1218" y="466" class="h" font-size="13.5">Measured</text>
+  <text x="1218" y="492" class="s">Discovery · 3 turns · 15 s · ≈ $0.14</text>
+  <text x="1218" y="514" class="s">Replay · ~4 s · $0.00 · 0 LLM calls</text>
+  <text x="1218" y="536" class="s">Stability · 10 / 10</text>
+  <text x="1218" y="558" class="s">Error classes handled · 4</text>
+  <text x="1218" y="580" class="s">Handoff · human steps recorded,</text>
+  <text x="1218" y="598" class="s">run completed after hand-back</text>
+
+  <!-- ===== Arrows ===== -->
+  <!-- Anthropic <-> Discovery -->
+  <path d="M235,166 L235,318" class="grey" marker-start="url(#g)" marker-end="url(#g)"/>
+  <text x="246" y="196" class="lab">screenshots ↔ actions</text>
+  <!-- GitHub <-> container -->
+  <path d="M900,166 L900,270" class="grey" marker-start="url(#g)" marker-end="url(#g)"/>
+  <text x="910" y="196" class="lab">image + artifacts ↓ · evidence ↑</text>
+  <!-- AI agent <-> nginx <-> Result -->
+  <path d="M1200,364 L1020,364" class="teal" marker-start="url(#t)" marker-end="url(#t)"/>
+  <text x="1068" y="352" class="labT">invoke ↔ result</text>
+  <path d="M986,364 L954,364" class="teal" marker-start="url(#t)" marker-end="url(#t)"/>
+  <!-- Human -> nginx -> browser -->
+  <path d="M1200,698 L1020,698" class="amber" marker-end="url(#a)"/>
+  <text x="1046" y="686" class="labA">take control · hand back</text>
+  <path d="M986,698 L954,698" class="amber" marker-end="url(#a)"/>
+
+  <!-- legend -->
+  <line x1="1218" y1="780" x2="1258" y2="780" class="teal"/><text x="1268" y="784" class="s">production path — no LLM</text>
+  <line x1="1218" y1="804" x2="1258" y2="804" class="grey"/><text x="1268" y="808" class="s">discovery · CI · evidence</text>
+  <line x1="1218" y1="828" x2="1258" y2="828" class="amber"/><text x="1268" y="832" class="s">human-in-the-loop handoff</text>
+
+  <text x="60" y="876" class="s">Multi-tenant: one base artifact per vendor product + a thin per-tenant overlay · app-fingerprint mismatch goes to review, never silent self-healing · single replica by design (ADR-0004)</text>
+</svg>
