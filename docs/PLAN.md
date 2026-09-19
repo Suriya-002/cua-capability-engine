@@ -1,4 +1,4 @@
-# Build plan (time-boxed)
+# Build plan (time-boxed) — status as of 2026-09-19: phases 0–7 done; 8 partial (stability); 9–10 in progress
 
 | Phase | Deliverable | Done when |
 |---|---|---|
